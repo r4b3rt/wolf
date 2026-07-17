@@ -163,9 +163,16 @@ describe('ai-module', function() {
         assert.strictEqual(cfg.maxHistoryMessages, 50)
         assert.strictEqual(cfg.thinkingLevel, 'high')
       })
-      it('returns only the four expected keys', function() {
+      it('returns only the expected keys', function() {
         const cfg = aiConfig.getWolfAiConfig()
-        assert.deepStrictEqual(Object.keys(cfg).sort(), ['api', 'maxHistoryMessages', 'maxTurns', 'thinkingLevel'])
+        assert.deepStrictEqual(Object.keys(cfg).sort(), [
+          'api',
+          'maxHistoryMessages',
+          'maxTurns',
+          'modelReasoning',
+          'thinkingFormat',
+          'thinkingLevel',
+        ])
       })
     })
 
