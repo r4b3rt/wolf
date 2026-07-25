@@ -17,6 +17,8 @@ import { useRenderIcon } from "@/components/ReIcon/src/hooks";
 import { useTranslationLang } from "@/layout/hooks/useTranslationLang";
 import { useDataThemeChange } from "@/layout/hooks/useDataThemeChange";
 import { getLoginOptions, getCaptchaData } from "@/api/user";
+import ForceChangePwd from "./ForceChangePwd.vue";
+import DOMPurify from "dompurify";
 
 import dayIcon from "@/assets/svg/day.svg?component";
 import darkIcon from "@/assets/svg/dark.svg?component";
@@ -53,6 +55,21 @@ const captchaData = reactive({
   cid: "",
   captcha: ""
 });
+
+/**
+ * 验证码 SVG 用 v-html 渲染前先做一次消毒（AUD-024）。
+ * 正常情况下由后端 svg-captcha 生成、可信，这里按纵深防御原则处理：
+ * 即便后端被攻破或返回内容异常，也不会在登录页（未认证阶段）执行任意脚本。
+ */
+function sanitizeCaptchaSvg(svg: string): string {
+  if (!svg) return "";
+  return DOMPurify.sanitize(svg, {
+    USE_PROFILES: { svg: true, svgFilters: true }
+  });
+}
+
+// 首次登录强制改密
+const forceChangePwdVisible = ref(false);
 
 const { t } = useI18n();
 const { initStorage } = useLayout();
@@ -125,7 +142,7 @@ const loadCaptchaData = async () => {
     const res = await getCaptchaData();
     if (res.ok && res.data) {
       captchaData.cid = res.data.cid;
-      captchaData.captcha = res.data.captcha;
+      captchaData.captcha = sanitizeCaptchaSvg(res.data.captcha);
     }
   } catch (e) {
     console.error("Failed to load captcha:", e);
@@ -135,6 +152,32 @@ const loadCaptchaData = async () => {
 // 登录类型切换
 const authTypeChange = (label: string) => {
   localStorage.setItem("authType", label);
+};
+
+// 拉取后端路由并跳转到首页
+const enterConsole = () => {
+  return initRouter().then(() => {
+    disabled.value = true;
+    router
+      .push(getTopMenu(true).path)
+      .then(() => {
+        message(t("login.pureLoginSuccess"), { type: "success" });
+      })
+      .finally(() => (disabled.value = false));
+  });
+};
+
+// 改密成功后继续进入后台
+const onPasswordChanged = () => {
+  enterConsole();
+};
+
+// 放弃改密：清掉刚拿到的会话，退回登录页
+const onForceChangePwdCancel = () => {
+  useUserStoreHook().logOut();
+  ruleForm.password = "";
+  ruleForm.captchaText = "";
+  loadCaptchaData();
 };
 
 // 登录处理
@@ -158,17 +201,12 @@ const onLogin = async (formEl: FormInstance | undefined) => {
         .loginByUsername(loginData)
         .then(res => {
           if (res.ok) {
-            // Wolf 使用 ok 字段表示成功
-            // 获取后端路由
-            return initRouter().then(() => {
-              disabled.value = true;
-              router
-                .push(getTopMenu(true).path)
-                .then(() => {
-                  message(t("login.pureLoginSuccess"), { type: "success" });
-                })
-                .finally(() => (disabled.value = false));
-            });
+            // 仍在使用初始口令的账号，必须先改密才能进入后台。
+            if (res.data?.mustChangePassword) {
+              forceChangePwdVisible.value = true;
+              return;
+            }
+            return enterConsole();
           } else {
             ruleForm.captchaText = "";
             loadCaptchaData();
@@ -214,6 +252,11 @@ onMounted(() => {
 
 <template>
   <div class="select-none">
+    <ForceChangePwd
+      v-model="forceChangePwdVisible"
+      @changed="onPasswordChanged"
+      @cancel="onForceChangePwdCancel"
+    />
     <img :src="bg" class="wave" />
     <div class="flex-c absolute right-5 top-3">
       <!-- 主题 -->

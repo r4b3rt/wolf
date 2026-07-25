@@ -232,16 +232,21 @@ async function extractMemoryForSession(session, userID, AiChatMessageModel, AiUs
 
   // 写入新记忆
   if (extracted.add && extracted.add.length > 0) {
+    // content 来自 LLM 输出，长度理论上不受控；写入前按配置截断，避免单条超长记忆
+    // 挤占/撑爆后续注入 system prompt 时的上下文空间（AUD-023）。
+    const aiConfig = require('./ai-config')
+    const maxMemoryItemLength = aiConfig.getWolfAiConfig().maxMemoryItemLength || 500
     const validNew = extracted.add.filter(m =>
       m && MEMORY_CATEGORIES.includes(m.category) && typeof m.content === 'string' && m.content.trim(),
     )
 
     for (const mem of validNew) {
+      const content = mem.content.trim().slice(0, maxMemoryItemLength)
       await AiUserMemoryModel.create({
         userID,
         sessionID,
         category: mem.category,
-        content: mem.content.trim(),
+        content,
         source: 'auto',
         status: 1,
         createTime: now,

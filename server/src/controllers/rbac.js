@@ -38,7 +38,8 @@ const errors = {
   ERR_REPEATED_PASSWORD_INCORRECT: 'The password you entered repeatedly is incorrect.',
   ERR_OLD_PASSWORD_INCORRECT: 'Old password is incorrect.',
   ERR_USER_DISABLED: 'User is disabled.',
-  ERR_USER_APPIDS: 'User is not associated with the app.'
+  ERR_USER_APPIDS: 'User is not associated with the app.',
+  ERR_LOGIN_TEMPORARILY_LOCKED: 'Too many failed login attempts, try again later.',
 }
 
 class Rbac extends RbacPub {

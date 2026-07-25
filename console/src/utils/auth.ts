@@ -54,6 +54,21 @@ export const WolfCurrentAppKey = "wolf-current-app";
  * */
 export const multipleTabsKey = "multiple-tabs";
 
+/**
+ * 统一的 Cookie 安全属性（AUD-008）。
+ * js-cookie 运行在浏览器端，无法设置 HttpOnly（那本质上要求后端通过
+ * Set-Cookie 下发），这里能做到的是尽量收紧可被滥用的维度：
+ * - sameSite: 'strict'，避免第三方站点跨站携带该 Cookie（缓解 CSRF）；
+ * - secure：生产环境（https）下要求仅通过 TLS 传输。
+ */
+function secureCookieOptions(extra: Record<string, unknown> = {}) {
+  return {
+    sameSite: "strict" as const,
+    secure: location.protocol === "https:",
+    ...extra
+  };
+}
+
 /** 获取`token` */
 export function getToken(): DataInfo<number> {
   // 优先从 Cookie 获取 Wolf token
@@ -61,9 +76,11 @@ export function getToken(): DataInfo<number> {
   if (wolfToken) {
     const userInfo = storageLocal().getItem<DataInfo<number>>(userKey);
     return {
-      accessToken: wolfToken,
       expires: userInfo?.expires ?? Date.now() + 86400000,
-      ...userInfo
+      ...userInfo,
+      // Cookie 是 token 的唯一真实来源，放在最后确保不会被
+      // localStorage 中残留/过期的字段覆盖。
+      accessToken: wolfToken
     };
   }
   // 兼容原有逻辑
@@ -85,20 +102,24 @@ export function setToken(data: DataInfo<Date> | any) {
 
   // Wolf 登录返回的 token
   if (data.token) {
-    Cookies.set(WolfTokenKey, data.token, {
-      expires: isRemembered ? loginDay : undefined
-    });
+    Cookies.set(
+      WolfTokenKey,
+      data.token,
+      secureCookieOptions({ expires: isRemembered ? loginDay : undefined })
+    );
   } else if (data.accessToken) {
     // 兼容原有格式
-    Cookies.set(WolfTokenKey, data.accessToken, {
-      expires: isRemembered ? loginDay : undefined
-    });
+    Cookies.set(
+      WolfTokenKey,
+      data.accessToken,
+      secureCookieOptions({ expires: isRemembered ? loginDay : undefined })
+    );
   }
 
   Cookies.set(
     multipleTabsKey,
     "true",
-    isRemembered ? { expires: loginDay } : {}
+    secureCookieOptions(isRemembered ? { expires: loginDay } : {})
   );
 
   // 保存用户信息
@@ -112,8 +133,11 @@ export function setToken(data: DataInfo<Date> | any) {
     useUserStoreHook().SET_NICKNAME(nickname);
     useUserStoreHook().SET_ROLES(roles);
 
+    // 注意：不在 localStorage 中重复保存 accessToken（AUD-008）。
+    // token 只存在于上面设置的 Cookie 中，真正发请求时也是从 Cookie 读取
+    // （见 getWolfToken()）；localStorage 多存一份只会白白扩大 XSS 时的
+    // token 泄露面，且这里的值从不被用来发请求。
     storageLocal().setItem(userKey, {
-      accessToken: data.token || data.accessToken,
       expires: Date.now() + 86400000, // 默认1天过期
       username,
       nickname,

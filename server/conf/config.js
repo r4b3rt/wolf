@@ -4,7 +4,14 @@ const config = {
   cryptKey: process.env.WOLF_CRYPT_KEY || 'fbd4962351924792cb5e5b131435cd30b24e3570',
   rbacTokenExpireTime: parseInt(process.env.RBAC_TOKEN_EXPIRE_TIME) || 3600 * 24 * 30,
   consoleTokenExpireTime: parseInt(process.env.CONSOLE_TOKEN_EXPIRE_TIME) || 3600 * 24 * 30,
-  consoleLoginWithCaptcha: ((process.env.CONSOLE_LOGIN_WITH_CAPTCHA || 'no') === 'yes'),
+  // 生产环境默认开启验证码；其它环境保持关闭以免打断本地开发/测试。
+  // 显式设置 CONSOLE_LOGIN_WITH_CAPTCHA=no/yes 时总是以其为准。
+  consoleLoginWithCaptcha: process.env.CONSOLE_LOGIN_WITH_CAPTCHA
+    ? process.env.CONSOLE_LOGIN_WITH_CAPTCHA === 'yes'
+    : process.env.NODE_ENV === 'production',
+  // 登录失败限流：按 IP 与用户名分别计数，超过阈值锁定一段时间。
+  loginMaxFails: parseInt(process.env.LOGIN_MAX_FAILS) || 5,
+  loginLockSeconds: parseInt(process.env.LOGIN_LOCK_SECONDS) || 300,
   rbacRecordAccessLog: (process.env.RBAC_RECORD_ACCESS_LOG || 'yes') === 'yes',
   memCacheTTLSecond: 600,
   memCacheByRedis: (process.env.MEM_CACHE_BY_REDIS || 'no') === 'yes',
@@ -24,6 +31,9 @@ const config = {
     grants: ['authorization_code', 'refresh_token', 'client_credentials', 'password'],
     accessTokenLifetime: parseInt(process.env.OAUTH_ACCESS_TOKEN_LIFETIME) || 3600 * 24 * 7, // 7 days
     refreshTokenLifetime: parseInt(process.env.OAUTH_REFRESH_TOKEN_LIFETIME) || 3600 * 24 * 30, // 30 days.
+    // password grant 默认要求客户端认证（client_id + client_secret），防止仅凭泄露的
+    // client_id 就能对用户名密码发起爆破/撞库。仅当明确设置为 'no' 时才关闭。
+    requireClientAuthForPassword: (process.env.OAUTH_REQUIRE_CLIENT_AUTH_PASSWORD || 'yes') !== 'no',
   },
   ai: {
     // AI 模型与服务配置（本段为准；亦可仅通过环境变量注入，见各字段）
@@ -41,6 +51,12 @@ const config = {
     // wolf AI 行为配置
     maxTurns: parseInt(process.env.AI_MAX_TURNS) || 20,
     maxHistoryMessages: parseInt(process.env.AI_MAX_HISTORY) || 100,
+    // 单条用户消息最大字符数，防止超大 payload 占满上下文/拖慢请求（AUD-022）
+    maxMessageLength: parseInt(process.env.AI_MAX_MESSAGE_LENGTH) || 8000,
+    // 单条用户记忆最大字符数（手动添加/编辑，以及自动提取写入时都会截断，AUD-023）
+    maxMemoryItemLength: parseInt(process.env.AI_MAX_MEMORY_ITEM_LENGTH) || 500,
+    // system prompt 中"用户记忆"区块整体最大字符数，避免记忆无限堆积撑爆上下文（AUD-023）
+    maxMemorySectionLength: parseInt(process.env.AI_MAX_MEMORY_SECTION_LENGTH) || 4000,
     thinkingLevel: process.env.AI_THINKING_LEVEL || 'low',
     // 自建/非标准 OpenAI 兼容服务的 thinking 控制格式（仅在模型默认开启 thinking 时需设置）
     // 可选值：openai(reasoning_effort，默认) | zai(enable_thinking) | qwen(enable_thinking) | qwen-chat-template(chat_template_kwargs.enable_thinking)

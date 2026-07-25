@@ -94,7 +94,7 @@ class OAuth2 extends RbacPub {
     }
     const tokenUserInfo = await tokenUtil.tokenCheck(token)
     if (tokenUserInfo.error) { // failed
-      this.log4js.warn('oauth2 request [%s %s] invalid! token [%s] decrypt failed!', ctx.method, ctx.path, token)
+      this.log4js.warn('oauth2 request [%s %s] invalid! token [%s...] decrypt failed!', ctx.method, ctx.path, token && token.substring(0, 16))
       this._redirectToLogin('')
       return {}
     }
@@ -164,7 +164,9 @@ class OAuth2 extends RbacPub {
     const grantType = this.getArg('grant_type')
     const {request, response} = this._getOAuth2RequestResponse()
     const options = {
-      requireClientAuthentication: { password: false },
+      // password grant 默认要求客户端认证，防止仅凭泄露的 client_id 就能
+      // 对用户名密码发起爆破/撞库。可通过 OAUTH_REQUIRE_CLIENT_AUTH_PASSWORD=no 关闭。
+      requireClientAuthentication: { password: config.oauthOptions.requireClientAuthForPassword },
     }
     return oauth.token(request, response, options).then((resp)=>{
       const data = _.mapKeys(response.body, function(value, key) {

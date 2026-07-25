@@ -24,6 +24,7 @@ const aiConfig = require('../ai/ai-config')
 const agentFactory = require('../ai/agent-factory')
 const generateTitleModule = require('../ai/generate-title')
 const memoryExtractor = require('../ai/memory-extractor')
+const sessionLock = require('../ai/session-lock')
 const {
   stripThinkingFromMessage,
   isThinkingStreamEvent,
@@ -117,10 +118,29 @@ class AiChat extends BasicService {
     const message = body.message
     const sessionId = body.sessionId ? parseInt(body.sessionId) : null
     const locale = parseClientLocale(this.ctx)
+    const wolfAiConf = aiConfig.getWolfAiConfig()
 
     if (!message || typeof message !== 'string' || !message.trim()) {
       this.fail(400, 'ERR_MESSAGE_REQUIRED')
       return
+    }
+
+    const maxMessageLength = wolfAiConf.maxMessageLength || 8000
+    if (message.length > maxMessageLength) {
+      this.fail(400, 'ERR_MESSAGE_TOO_LONG')
+      return
+    }
+
+    // 同 session 并发锁（AUD-022）：已存在的会话先加锁，避免并发请求同时读写
+    // 历史消息、重复触发记忆提取。锁不住直接快速失败，不占用 LLM 配额。
+    let lockedSessionId = null
+    if (sessionId) {
+      const locked = await sessionLock.acquire(sessionId)
+      if (!locked) {
+        this.fail(429, 'ERR_SESSION_BUSY')
+        return
+      }
+      lockedSessionId = sessionId
     }
 
     // 设置 SSE 响应头，阻止 Koa 默认响应处理
@@ -134,6 +154,15 @@ class AiChat extends BasicService {
 
     let session = null
     let isNewSession = false
+    let agent = null
+
+    // 客户端断开 SSE 连接时中止 Agent，避免后台继续消耗 LLM 配额 / 执行工具调用
+    const onClientDisconnect = () => {
+      if (agent) {
+        agent.abort()
+      }
+    }
+    res.on('close', onClientDisconnect)
 
     try {
       // 获取或创建会话
@@ -158,6 +187,9 @@ class AiChat extends BasicService {
           updateTime: util.unixtime(),
         })
         isNewSession = true
+        // 新会话此前不存在，这里补加锁，让后续（并发新开的）同 id 请求按同一条规则排队/拒绝
+        lockedSessionId = parseInt(session.id)
+        await sessionLock.acquire(lockedSessionId)
         sseWrite(res, { type: 'session_created', sessionId: parseInt(session.id) })
       }
 
@@ -172,11 +204,16 @@ class AiChat extends BasicService {
         ).catch(e => log4js.error('[ai-chat] memory extraction error: %s', e.message))
       }
 
-      // 加载历史消息，还原为 AgentMessage[]
-      const dbMessages = await AiChatMessageModel.findAll({
+      // 加载历史消息，还原为 AgentMessage[]。
+      // 只取最近 maxHistoryMessages 条（AUD-022）：会话消息数没有上限，若每次都整表加载，
+      // 长会话会让单次请求的内存占用和查询耗时随历史增长无限放大。
+      const maxHistoryMessages = wolfAiConf.maxHistoryMessages || 100
+      const dbMessagesDesc = await AiChatMessageModel.findAll({
         where: { sessionID: session.id },
-        order: [['id', 'ASC']],
+        order: [['id', 'DESC']],
+        limit: maxHistoryMessages,
       })
+      const dbMessages = dbMessagesDesc.reverse()
       const historyMessages = dbMessages.map(dbMsg => dbMsgToAgentMsg(dbMsg))
 
       // 加载用户活跃记忆，注入 system prompt
@@ -186,11 +223,18 @@ class AiChat extends BasicService {
       })
 
       // 创建 Agent 实例（含历史消息 + 用户记忆）
-      const agent = await agentFactory.createAgent({ userInfo, clientIp, messages: historyMessages, locale, memories })
+      agent = await agentFactory.createAgent({ userInfo, clientIp, messages: historyMessages, locale, memories })
 
       // 收集本轮新消息（用于持久化）
       const newMessages = []
       let totalTokenUsage = { input: 0, output: 0, cost: 0 }
+
+      // maxTurns 强制上限（AUD-022）：pi-agent-core 本身不支持传入轮次上限，
+      // 只能在这里统计 turn_end 事件数，超限后主动 abort，防止恶意/异常 prompt
+      // 诱导模型无限次调用工具（DoS、耗尽 LLM 配额）。
+      const maxTurns = wolfAiConf.maxTurns || 20
+      let turnCount = 0
+      let maxTurnsExceeded = false
 
       // 订阅 Agent 事件
       const unsubscribe = agent.subscribe((event) => {
@@ -271,6 +315,11 @@ class AiChat extends BasicService {
                 newMessages.push(tr)
               }
             }
+            turnCount++
+            if (turnCount >= maxTurns) {
+              maxTurnsExceeded = true
+              agent.abort()
+            }
             break
 
           case 'agent_end':
@@ -325,12 +374,23 @@ class AiChat extends BasicService {
         { where: { id: session.id } }
       )
 
+      if (maxTurnsExceeded) {
+        sseWrite(res, {
+          type: 'error',
+          error: `ERR_MAX_TURNS_EXCEEDED: 本轮对话已达到最大轮次限制（${maxTurns}），已中止后续处理，请开启新一轮提问或简化任务。`,
+        })
+      }
+
       // 发送完成信号
       sseWrite(res, { type: 'done', tokenUsage: totalTokenUsage })
     } catch (err) {
       log4js.error('[ai-chat] chatPost error: %s', err.message, err.stack)
       sseWrite(res, { type: 'error', error: err.message || 'ERR_AGENT_FAILED' })
     } finally {
+      res.removeListener('close', onClientDisconnect)
+      if (lockedSessionId) {
+        await sessionLock.release(lockedSessionId)
+      }
       res.end()
     }
   }
@@ -615,6 +675,11 @@ class AiChat extends BasicService {
       this.fail(400, 'ERR_CONTENT_REQUIRED')
       return
     }
+    const maxMemoryItemLength = aiConfig.getWolfAiConfig().maxMemoryItemLength || 500
+    if (content.trim().length > maxMemoryItemLength) {
+      this.fail(400, 'ERR_CONTENT_TOO_LONG')
+      return
+    }
 
     const now = util.unixtime()
     const memory = await AiUserMemoryModel.create({
@@ -664,6 +729,11 @@ class AiChat extends BasicService {
     if (body.content !== undefined) {
       if (typeof body.content !== 'string' || !body.content.trim()) {
         this.fail(400, 'ERR_CONTENT_REQUIRED')
+        return
+      }
+      const maxMemoryItemLength = aiConfig.getWolfAiConfig().maxMemoryItemLength || 500
+      if (body.content.trim().length > maxMemoryItemLength) {
+        this.fail(400, 'ERR_CONTENT_TOO_LONG')
         return
       }
       updates.content = body.content.trim()

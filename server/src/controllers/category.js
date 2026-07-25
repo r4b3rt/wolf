@@ -79,7 +79,12 @@ class Category extends BasicService {
     if (existCategory) {
       this.assertAppAccess(existCategory.appID)
     }
-    await CategoryModel.checkNotExist({'id': {[Op.ne]: id}, name: values.name}, errors.ERR_CATEGORY_NAME_EXIST)
+    // 唯一性按 appID 限定，与 post() 一致，避免误伤其它应用的同名分类。
+    const appID = existCategory ? existCategory.appID : this.getArg('appID')
+    await CategoryModel.checkNotExist(
+      {'id': {[Op.ne]: id}, appID, name: values.name},
+      errors.ERR_CATEGORY_NAME_EXIST
+    )
 
     values.updateTime = util.unixtime();
     const options = {where: {id}}
@@ -96,7 +101,7 @@ class Category extends BasicService {
       this.log4js.error('Deleting the category(%s) failed, it has been used.', categoryID)
       throw new AccessDenyError('ERR_CATEGORY_REMOVE_DENIED')
     }
-    await this.deleteByPk('id')
+    await this.deleteByPkWithAppAccess('id')
   }
 
   async deleteByAppId() {

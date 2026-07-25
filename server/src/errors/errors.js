@@ -23,6 +23,13 @@ exports.ERR_RESOURCE_ID_NOT_FOUND = 'ERR_RESOURCE_ID_NOT_FOUND'
 exports.ERR_METHOD_INVALID = 'ERR_METHOD_INVALID'
 exports.ERR_LDAP_CONFIG_NOT_FOUND = 'ERR_LDAP_CONFIG_NOT_FOUND'
 exports.ERR_NOT_ALLOWED_RESET_PWD = 'ERR_NOT_ALLOWED_RESET_PWD'
+exports.ERR_OLD_PASSWORD_INCORRECT = 'ERR_OLD_PASSWORD_INCORRECT'
+exports.ERR_NEW_PASSWORD_TOO_WEAK = 'ERR_NEW_PASSWORD_TOO_WEAK'
+exports.ERR_NEW_PASSWORD_SAME_AS_OLD = 'ERR_NEW_PASSWORD_SAME_AS_OLD'
+exports.ERR_LOGIN_TEMPORARILY_LOCKED = 'ERR_LOGIN_TEMPORARILY_LOCKED'
+exports.ERR_SORT_FIELD_INVALID = 'ERR_SORT_FIELD_INVALID'
+exports.ERR_MESSAGE_TOO_LONG = 'ERR_MESSAGE_TOO_LONG'
+exports.ERR_SESSION_BUSY = 'ERR_SESSION_BUSY'
 
 const msgs = {
   ERR_OBJECT_NOT_FOUND: 'Object not found',
@@ -50,6 +57,13 @@ const msgs = {
   ERR_METHOD_INVALID: 'HTTP Request Method is Invalid',
   ERR_LDAP_CONFIG_NOT_FOUND: 'LDAP config not found',
   ERR_NOT_ALLOWED_RESET_PWD: 'Not allowed to reset password',
+  ERR_OLD_PASSWORD_INCORRECT: 'The current password is incorrect',
+  ERR_NEW_PASSWORD_TOO_WEAK: 'The new password is too weak',
+  ERR_NEW_PASSWORD_SAME_AS_OLD: 'The new password must differ from the current one',
+  ERR_LOGIN_TEMPORARILY_LOCKED: 'Too many failed login attempts, try again later',
+  ERR_SORT_FIELD_INVALID: 'The sort field is not a valid column',
+  ERR_MESSAGE_TOO_LONG: 'The message is too long',
+  ERR_SESSION_BUSY: 'This session already has a request in progress',
 }
 
 function errmsg(reason) {

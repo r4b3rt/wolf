@@ -232,17 +232,41 @@ class ArgsHelper {
     return undefined
   }
 
+  /**
+   * 校验排序字段名是否合法：命中模型的属性名或其映射的数据库列名，
+   * 或（没有模型信息时）满足标识符格式。用于防止 ORDER BY 注入（AUD-015）。
+   */
+  _isValidOrderField(field) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(field)) {
+      return false
+    }
+    const rawAttributes = this.ObjectModel && this.ObjectModel.rawAttributes
+    if (!rawAttributes) {
+      // 没有关联模型（如内部工具类）时退化为标识符格式校验。
+      return true
+    }
+    if (Object.prototype.hasOwnProperty.call(rawAttributes, field)) {
+      return true
+    }
+    return Object.values(rawAttributes).some((attr) => attr && attr.field === field)
+  }
+
   getOrderByArgs(defOrder) {
     let argOrder = this.getArg('sort', defOrder)
     if (argOrder) {
       argOrder = argOrder.trim()
+      let field, direction
       if (argOrder.startsWith('+')) {
-        const field = argOrder.substring(1).trim()
-        return [[field, 'ASC']]
+        field = argOrder.substring(1).trim()
+        direction = 'ASC'
       } else {
-        const field = argOrder.replace('-', '').trim()
-        return [[field, 'DESC']]
+        field = argOrder.replace('-', '').trim()
+        direction = 'DESC'
       }
+      if (!this._isValidOrderField(field)) {
+        throw new ArgsError(`sort field '${field}' is invalid`)
+      }
+      return [[field, direction]]
     }
     return undefined
   }

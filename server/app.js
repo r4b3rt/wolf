@@ -17,6 +17,7 @@ const app = new Koa()
 const views = require('koa-views')
 const path = require('path')
 const { initRadixTreeCache } = require('./src/service/resource-cache')
+const { runStartupCheck } = require('./src/util/startup-check')
 
 locale(app)
 
@@ -35,6 +36,8 @@ let server = null
 
 async function startServer() {
   try {
+    runStartupCheck()
+
     app.on('error', (err, ctx) => {
       log4js.error('app error: %s', err)
     })

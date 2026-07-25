@@ -53,23 +53,28 @@ class RedisCache {
   }
 }
 
-function initCache(keyPrefix) {
+function initCache(keyPrefix, ttlSeconds) {
+  const stdTTL = ttlSeconds || config.memCacheTTLSecond
   if (config.memCacheByRedis) {
-    const cache = new RedisCache(redisClient, {stdTTL: config.memCacheTTLSecond, prefix: keyPrefix})
+    const cache = new RedisCache(redisClient, {stdTTL, prefix: keyPrefix})
     return {cache, cacheByRedis: true}
   } else {
-    let checkperiod = Math.floor(config.memCacheTTLSecond / 2)
+    let checkperiod = Math.floor(stdTTL / 2)
     if (checkperiod < 1) {
       checkperiod = 1
     }
-    const cache = new NodeCache({stdTTL: config.memCacheTTLSecond, checkperiod});
+    const cache = new NodeCache({stdTTL, checkperiod});
     return {cache, cacheByRedis: false}
   }
 }
 
 class WolfCache {
-  constructor(keyPrefix) {
-    const {cache, cacheByRedis} = initCache(keyPrefix)
+  /**
+   * @param {string} keyPrefix
+   * @param {number} [ttlSeconds] - 覆盖默认的 config.memCacheTTLSecond，用于生命周期与通用缓存不同的场景（如登录限流锁定）
+   */
+  constructor(keyPrefix, ttlSeconds) {
+    const {cache, cacheByRedis} = initCache(keyPrefix, ttlSeconds)
     this.cache = cache
     this.cacheByRedis = cacheByRedis
   }

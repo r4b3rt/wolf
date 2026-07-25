@@ -46,6 +46,16 @@ function _M.redirect(uri, args)
     ngx.exit(ngx.HTTP_MOVED_TEMPORARILY)
 end
 
+-- 上游只应信任由 agent 写入的身份头。客户端自带的同名头一律先清掉，
+-- 避免忽略列表 / 提前返回的路径把伪造身份透传给业务服务。
+_M.identity_headers = {"X-UserId", "X-Username", "X-nickname"}
+
+function _M.clear_identity_headers()
+    for _, header in ipairs(_M.identity_headers) do
+        ngx.req.clear_header(header)
+    end
+end
+
 function _M.url_in_ignore_list(url)
     if config.ignore_list == nil then
         return false

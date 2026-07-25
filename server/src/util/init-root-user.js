@@ -9,15 +9,26 @@ async function createUser(username, nickname, manager) {
     console.log('user [%s] is exist!', username);
     return;
   }
-  const password = config.rootUserInitialPassword || util.randomString(12)
+  // 只有随机生成的口令才需要打印——它没有别的传达渠道。
+  // 来自配置/环境变量的口令部署方已经知道，打印到日志只会多一个泄露点。
+  const configuredPassword = config.rootUserInitialPassword
+  const password = configuredPassword || util.randomString(12)
   const values = {username, nickname, manager}
   values.password = util.encodePassword(password);
   values.status = 0;
   values.lastLogin = 0;
+  // 初始口令一律标记为必须修改，登录后由 Console 强制走改密流程。
+  values.profile = {mustChangePassword: true};
   values.createTime = util.unixtime();
   values.updateTime = util.unixtime();
   await UserModel.create(values);
-  console.log('system user [%s] created, the password is %s.', username, password)
+  if (configuredPassword) {
+    console.log('system user [%s] created with the configured initial password, ' +
+      'it must be changed on first login.', username)
+  } else {
+    console.log('system user [%s] created, the generated password is %s. ' +
+      'It must be changed on first login.', username, password)
+  }
 }
 
 async function addRootUser() {

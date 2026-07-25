@@ -4,12 +4,15 @@
 const util = require('../util/util')
 const ArgsUtil = require('../util/args-util')
 const AccessLogModel = require('../model/access-log')
+const { sanitizeBody } = require('../util/log-sanitize')
 const _ = require('lodash')
 
 
 const ignoreUrls = {
   ['/wolf/user/info']: true,
   ['/wolf/access-log/list']: true,
+  // 登录请求体含明文密码，即使脱敏后也不必落审计库；直接忽略整条记录。
+  ['/wolf/user/login']: true,
 }
 
 function isRecordAccessLog(ctx) {
@@ -54,6 +57,7 @@ function writeAccessLog(ctx) {
     if (!body) {
       body = getRawBody(ctx);
     }
+    body = sanitizeBody(body)
     const contentType = ctx.request.type
     const status = ctx.status
     const date = util.currentDate('YYYY-MM-DD')

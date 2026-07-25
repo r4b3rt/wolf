@@ -31,6 +31,7 @@ class Application extends BasicService {
 
   async diagram() {
     const id = this.getRequiredArg('id');
+    this.assertAppAccess(id)
     const application = await ApplicationModel.findByPk(id);
     if(!application) {
       this.fail(200, errors.ERR_OBJECT_NOT_FOUND)
@@ -75,6 +76,7 @@ class Application extends BasicService {
 
   async get() {
     const id = this.getRequiredArg('id')
+    this.assertAppAccess(id)
     const application = await ApplicationModel.findByPk(id)
     if (!application) {
       this.fail(200, errors.ERR_OBJECT_NOT_FOUND)

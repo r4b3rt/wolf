@@ -2,3 +2,4 @@ server/.nyc_output
 server/coverage
 server/log
 build-docker-img-server-use-proxy.sh
+WOLF-CONSOLE.code-workspace

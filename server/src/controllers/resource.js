@@ -145,7 +145,7 @@ class Resource extends BasicService {
   }
 
   async delete() {
-    await this.deleteByPk('id')
+    await this.deleteByPkWithAppAccess('id')
   }
 
   async deleteByAppId() {

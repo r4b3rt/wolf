@@ -225,7 +225,8 @@ async function renderMermaidBlocks() {
     const id = block.dataset.mermaidId || `mermaid-${++mermaidIdCounter}`;
     try {
       const { svg } = await mermaid.render(id, source);
-      block.innerHTML = stripSvgSizeLimit(svg);
+      // 行内 SVG 同样消毒后再写入（与 lightbox 一致，AUD-024）
+      block.innerHTML = sanitizeMermaidSvg(stripSvgSizeLimit(svg));
       block.dataset.rendered = "1";
       block.dataset.zoomHint = t("wolf.aiChat.mermaidZoomHint");
       delete block.dataset.pending;
@@ -254,8 +255,20 @@ const bubbleClass = {
 const lightboxVisible = ref(false);
 const lightboxSvg = ref("");
 
+/**
+ * Mermaid 渲染出的 SVG 经 v-html 写入 lightbox 前再消毒一次（AUD-024）。
+ * mermaid.render 输出理论上可信，但模型内容可控 + 二次注入面（lightbox）
+ * 仍应按纵深防御处理，剥离 script/on* 等可执行内容。
+ */
+function sanitizeMermaidSvg(svgHtml: string): string {
+  if (!svgHtml) return "";
+  return DOMPurify.sanitize(svgHtml, {
+    USE_PROFILES: { svg: true, svgFilters: true }
+  });
+}
+
 function openLightbox(svgHtml: string) {
-  lightboxSvg.value = svgHtml;
+  lightboxSvg.value = sanitizeMermaidSvg(svgHtml);
   lightboxVisible.value = true;
 }
 

@@ -61,7 +61,10 @@ local function check_url_permission(appID, action, resName, clientIP)
         end
     end
     if not res then
-        return false, 500, reason
+        -- Wolf 不可达：必须 fail-closed，不能让请求落到上游。
+        ngx.log(ngx.ERR, "wolf server unreachable after ", retry_max,
+            " retries, deny request. resName:", resName)
+        return false, ngx.HTTP_SERVICE_UNAVAILABLE, reason or 'wolf server unreachable'
     end
 
 
@@ -99,9 +102,35 @@ local function url_redirect(url, args)
     util.redirect(url, args)
 end
 
+-- 返回 Basic Auth challenge 并终止请求。
+local function basic_auth_challenge(loginPrompt)
+    ngx.status = ngx.HTTP_UNAUTHORIZED
+    ngx.header["WWW-Authenticate"] = "Basic realm=\"" .. loginPrompt .. "\""
+    ngx.send_headers()
+    ngx.flush(true)
+    return ngx.exit(ngx.HTTP_UNAUTHORIZED)
+end
+
+-- 在 access 阶段发送错误响应并终止请求。
+-- 必须 ngx.exit，否则 nginx 会继续进入 content 阶段并 proxy_pass（fail-open）。
+local function deny(status, message)
+    ngx.status = status
+    ngx.header["Content-Type"] = "text/plain"
+    ngx.send_headers()
+    ngx.flush(true)
+    ngx.say(message)
+    ngx.flush(true)
+    return ngx.exit(status)
+end
+
 local function access_check()
     local url = ngx.var.uri
     local action = ngx.req.get_method()
+
+    -- 身份头由本模块在鉴权成功后写入，任何客户端传入的同名头都必须先丢弃，
+    -- 否则忽略列表（静态资源）等提前返回的路径会把伪造的身份透传给上游。
+    util.clear_identity_headers()
+
 	if util.url_in_ignore_list(url) then
 		ngx.log(ngx.INFO, "check permission, ignore current request!")
 		return
@@ -116,28 +145,27 @@ local function access_check()
 	local authorization = get_authorization()
 	if authorization == nil then
 		ngx.log(ngx.WARN, "no permission to access ", permItem, ", need login!")
-        ngx.status = ngx.HTTP_UNAUTHORIZED
-        ngx.header["WWW-Authenticate"] = "Basic realm=\"" .. loginPrompt .. "\""
-        ngx.send_headers()
-        ngx.flush(true)
+        return basic_auth_challenge(loginPrompt)
 	end
 
     local ok, status, reason, userInfo, headers = check_url_permission(appID, action, url, clientIP)
-	ngx.log(ngx.INFO, " check_url_permission(", permItem, ",token=", tostring(token), ")=",
+	ngx.log(ngx.INFO, " check_url_permission(", permItem, ")=",
         ok, ", status:", tostring(status), ", userInfo:", tostring(json.dumps(userInfo)))
 
     local userID = -1
 	local username = nil
     local nickname = nil
     if type(userInfo) == 'table' then
-        ngx.req.set_header("X-UserId", userInfo.id)
-        ngx.req.set_header("X-Username", userInfo.username)
-        ngx.req.set_header("X-nickname", ngx.escape_uri(userInfo.nickname) or userInfo.username)
-        -- local args = ngx.req.get_uri_args()
 		ngx.ctx.userInfo = userInfo
         userID = userInfo.id
 		username = userInfo.username
         nickname = userInfo.nickname
+        -- 只有鉴权通过才把身份透传给上游；失败路径不写头。
+        if ok then
+            ngx.req.set_header("X-UserId", userInfo.id)
+            ngx.req.set_header("X-Username", userInfo.username)
+            ngx.req.set_header("X-nickname", ngx.escape_uri(userInfo.nickname) or userInfo.username)
+        end
 	end
 	if headers and headers["Set-Cookie"] then
 		local cookie_value = headers["Set-Cookie"]
@@ -150,31 +178,20 @@ local function access_check()
 		-- no permission.
 		if status == ngx.HTTP_UNAUTHORIZED or status == ngx.HTTP_FORBIDDEN then
 			if reason == "ERR_TOKEN_INVALID" then
-                ngx.status = ngx.HTTP_UNAUTHORIZED
-                ngx.header["WWW-Authenticate"] = "Basic realm=\"" .. loginPrompt .. "\""
-                ngx.send_headers()
-                ngx.flush(true)
+                return basic_auth_challenge(loginPrompt)
             else
                 local redirect_url = no_permission_html
                 if url == '/' then
                     redirect_url = no_permission_html
                 end
-                url_redirect(redirect_url, { username = username, reason=reason })
+                return url_redirect(redirect_url, { username = username, reason=reason })
             end
         elseif status == ngx.HTTP_BAD_REQUEST then
-            ngx.status = ngx.HTTP_INTERNAL_SERVER_ERROR
-            ngx.header["Content-Type"] = "text/plain"
-			ngx.send_headers()
-			ngx.flush(true)
-			ngx.say("rbac check permission failed! status:" .. tostring(status))
-			ngx.flush(true)
+            return deny(ngx.HTTP_INTERNAL_SERVER_ERROR,
+                "rbac check permission failed! status:" .. tostring(status))
 		else
-			ngx.status = status
-            ngx.header["Content-Type"] = "text/plain"
-			ngx.send_headers()
-			ngx.flush(true)
-			ngx.say("rbac check permission failed! status:" .. tostring(status))
-			ngx.flush(true)
+            return deny(status or ngx.HTTP_FORBIDDEN,
+                "rbac check permission failed! status:" .. tostring(status))
 		end
 	end
 end

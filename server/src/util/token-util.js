@@ -40,7 +40,7 @@ function tokenDecrypt(token) {
     }
     return userInfo
   } catch (err) {
-    log4js.warn('jwt.verify(%s) failed! err: %s', token, err)
+    log4js.warn('jwt.verify(%s...) failed! err: %s', token && token.substring(0, 16), err)
     return { error: ERR_TOKEN_INVALID }
   }
 }

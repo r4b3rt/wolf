@@ -10,6 +10,7 @@
 
 const util = require('../util/util')
 const AccessLogModel = require('../model/access-log')
+const { sanitizeBody } = require('../util/log-sanitize')
 const log4js = require('../util/log4js')
 
 class InternalCaller {
@@ -94,7 +95,7 @@ class InternalCaller {
         action: ctx.method,
         resName: ctx.path,
         status: ctx.status,
-        body: requestArgs || {},
+        body: sanitizeBody(requestArgs || {}),
         contentType: 'application/json',
         date: util.currentDate('YYYY-MM-DD'),
         accessTime: util.unixtime(),

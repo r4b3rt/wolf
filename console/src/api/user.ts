@@ -6,6 +6,8 @@ export type WolfLoginResult = WolfResponse<{
   token: string;
   userInfo: WolfUserInfo;
   applications: WolfApplication[];
+  /** 账号仍在使用部署时的初始口令，登录后必须先改密 */
+  mustChangePassword?: boolean;
 }>;
 
 /** Wolf 用户信息结果 */
@@ -101,6 +103,13 @@ export const resetPwd = (id: string) => {
       data: { id }
     }
   );
+};
+
+/** 当前登录用户自助修改密码 */
+export const changePwd = (oldPassword: string, newPassword: string) => {
+  return http.request<WolfResponse>("put", "/user/changePwd", {
+    data: { oldPassword, newPassword }
+  });
 };
 
 /** 检查用户名是否存在 */

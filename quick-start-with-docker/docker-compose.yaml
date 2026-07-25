@@ -1,3 +1,7 @@
+# WARNING: Credentials and keys below are for LOCAL DEMO only.
+# Never reuse them in production. Generate fresh random values for:
+#   RBAC_ROOT_PASSWORD, RBAC_TOKEN_KEY, WOLF_CRYPT_KEY, POSTGRES_PASSWORD
+# and keep them out of Git (use env files / secrets managers instead).
 version: '3'
 services:
   database:

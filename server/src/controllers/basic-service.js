@@ -15,6 +15,7 @@ const {ldapLogin} = require('../ldap/LDAPClient');
 const constant = require('../util/constant')
 const Op = require('sequelize').Op;
 const _ = require('lodash')
+const loginThrottle = require('../util/login-throttle')
 
 class BasicService extends Service {
   constructor(ctx, ObjectModel) {
@@ -124,6 +125,23 @@ class BasicService extends Service {
     const where = {[idFieldName]: id}
     const options = {where}
     const rowCount = await this.ObjectModel.destroy(options);
+    this.success({count: rowCount})
+  }
+
+  /**
+   * 按主键删除，并校验行所属 appID 对当前用户可访问。
+   * 防止攻击者用自己有权限的 appID 参数删除其它应用的资源（IDOR）。
+   */
+  async deleteByPkWithAppAccess(idFieldName) {
+    const id = this.getRequiredArg(idFieldName)
+    const object = await this.ObjectModel.findByPk(id)
+    if (!object) {
+      this.fail(200, errors.ERR_OBJECT_NOT_FOUND)
+      return
+    }
+    this.assertAppAccess(object.appID)
+    const where = {[idFieldName]: id, appID: object.appID}
+    const rowCount = await this.ObjectModel.destroy({where})
     this.success({count: rowCount})
   }
 
@@ -304,13 +322,33 @@ class BasicService extends Service {
     return { userInfo };
   }
 
+  /**
+   * 登录入口，Console（user.login）与业务应用（rbac.loginPost/loginSubmit）共用。
+   * 统一在此处加登录失败限流锁定（AUD-007），避免任一入口遗漏。
+   */
   async userLoginInternal(username, password, opts={}) {
+    const clientIp = this.ctx.clientIp
+    if (await loginThrottle.isLoginLocked(clientIp, username)) {
+      this.log4js.warn('login blocked by throttle! ip:%s, username:%s', clientIp, username)
+      return {err: errors.ERR_LOGIN_TEMPORARILY_LOCKED}
+    }
+
+    let result
     switch(opts.authType) {
     case constant.AuthType.LDAP:
-      return await this.ldapUserLoginInternal(username, password)
+      result = await this.ldapUserLoginInternal(username, password)
+      break
     default:
-      return await this.passwordUserLoginInternal(username, password)
+      result = await this.passwordUserLoginInternal(username, password)
+      break
     }
+
+    if (result.err) {
+      await loginThrottle.recordLoginFailure(clientIp, username)
+    } else {
+      await loginThrottle.clearLoginFailure(clientIp, username)
+    }
+    return result
   }
 }
 

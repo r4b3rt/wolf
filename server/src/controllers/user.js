@@ -17,6 +17,13 @@ const _ = require('lodash')
 const userFields = ['id', 'username', 'nickname', 'email', 'tel', 'appIDs', "authType", 'manager', 'status', 'lastLogin', 'profile', 'createTime'];
 const applicationFields = ['id', 'name', 'description', 'createTime'];
 
+const MIN_PASSWORD_LENGTH = 8
+
+/** 初始口令（部署时的默认值）会被打上该标记，登录后必须先改密。 */
+function isMustChangePassword(userInfo) {
+  return !!(userInfo && userInfo.profile && userInfo.profile.mustChangePassword)
+}
+
 
 class User extends BasicService {
   constructor(ctx) {
@@ -25,7 +32,9 @@ class User extends BasicService {
 
   async access(bizMethod) {
     const method = this.ctx.method
-    if (method !== 'GET' && this.ctx.userInfo && bizMethod !== 'checkExist' && bizMethod !== 'logout') { // POST, PUT, DELETE
+    // changePwd 是自助改密：只作用于当前登录用户自身，不需要 super。
+    const selfServiceMethods = ['checkExist', 'logout', 'changePwd']
+    if (method !== 'GET' && this.ctx.userInfo && !selfServiceMethods.includes(bizMethod)) { // POST, PUT, DELETE
       if (this.ctx.userInfo.manager !== constant.Manager.super) {
         this.log4js.error('access [%s] failed! user:%s have no permission to do this operation', bizMethod, this.ctx.userInfo.username)
         throw new AccessDenyError('ERR_NEED_SUPER_USER')
@@ -101,8 +110,60 @@ class User extends BasicService {
     let applications = await this.userApplications(userInfo);
     userInfo.appIDs = userInfo.appIDs || []
 
-    const data = {token, 'userInfo': util.filterFieldWhite(userInfo, userFields), applications}
+    const data = {
+      token,
+      'userInfo': util.filterFieldWhite(userInfo, userFields),
+      applications,
+      mustChangePassword: isMustChangePassword(userInfo),
+    }
     this.success(data)
+  }
+
+  /**
+   * 当前登录用户自助修改口令。
+   * 初始口令（root/admin 首次部署）会被标记 mustChangePassword，
+   * Console 在登录后强制走这个接口。
+   */
+  async changePwd() {
+    this.checkMethod('PUT')
+    const currentUser = this.ctx.userInfo
+    const oldPassword = this.getRequiredArg('oldPassword')
+    const newPassword = this.getRequiredArg('newPassword')
+
+    const userInfo = await UserModel.findByPk(currentUser.id)
+    if (!userInfo) {
+      this.fail(200, errors.ERR_USER_NOT_FOUND)
+      return
+    }
+    if (userInfo.authType !== constant.AuthType.PASSWORD) {
+      this.fail(400, errors.ERR_NOT_ALLOWED_RESET_PWD)
+      return
+    }
+    if (!util.comparePassword(oldPassword, userInfo.password)) {
+      this.log4js.error('changePwd failed! user:%s old password incorrect', currentUser.username)
+      this.fail(200, errors.ERR_OLD_PASSWORD_INCORRECT)
+      return
+    }
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      this.fail(200, errors.ERR_NEW_PASSWORD_TOO_WEAK)
+      return
+    }
+    if (newPassword === oldPassword) {
+      this.fail(200, errors.ERR_NEW_PASSWORD_SAME_AS_OLD)
+      return
+    }
+
+    const profile = Object.assign({}, userInfo.profile)
+    delete profile.mustChangePassword
+    const values = {
+      password: util.encodePassword(newPassword),
+      profile,
+      updateTime: util.unixtime(),
+    }
+    await UserModel.mustUpdate(values, {where: {id: userInfo.id}})
+    await userCache.flushUserCache()
+    this.log4js.info('user:%s changed own password successfully', currentUser.username)
+    this.success({})
   }
 
   async logout() {

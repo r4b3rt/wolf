@@ -66,14 +66,29 @@ async function initRadixTreeCache() {
   log4js.info(`RadixTree cache initialized for ${Object.keys(appRadixTrees).length} apps`)
 }
 
-async function getResourceFromDb(appID, action, name) {
+// name 来自请求路径，必须经方言层转义后作为绑定值参与比较，不能拼进 SQL 文本。
+function buildMatchWhere(appID, action, name) {
+  const colName = Sequelize.col('resource.name')
   const where = {appID: appID}
   where.action = {[Op.in]: [action, 'ALL']}
   where[Op.or] = [
     {matchType: constant.MatchType.equal, name: name},
-    {matchType: constant.MatchType.suffix, name: Sequelize.literal(`right('${name}', length(name)) = name`)},
-    {matchType: constant.MatchType.prefix, name: Sequelize.literal(`substr('${name}', 1, length(name)) = name`)},
+    {
+      matchType: constant.MatchType.suffix,
+      [Op.and]: Sequelize.where(
+        Sequelize.fn('right', name, Sequelize.fn('length', colName)), Op.eq, colName),
+    },
+    {
+      matchType: constant.MatchType.prefix,
+      [Op.and]: Sequelize.where(
+        Sequelize.fn('substr', name, 1, Sequelize.fn('length', colName)), Op.eq, colName),
+    },
   ]
+  return where
+}
+
+async function getResourceFromDb(appID, action, name) {
+  const where = buildMatchWhere(appID, action, name)
 
   const order = [['priority', 'ASC']]
   const options = {where, order}
@@ -166,3 +181,4 @@ exports.flushCacheImmediately = flushCacheImmediately;
 exports.getResourceByRadixTree = getResourceByRadixTree;
 exports.getRadixTreeCache = getRadixTreeCache;
 exports.setRadixTreeCache = setRadixTreeCache;
+exports.buildMatchWhere = buildMatchWhere;
