@@ -57,7 +57,7 @@ function getI18nMessage(errmsg: string, reason: string): string {
     return transformI18n(i18nReasonKeys[reason]);
   }
 
-  // 错误码映射表
+  // 错误码映射表（与 locales/*.yaml 的 wolf.error.* 保持同步）
   const errorMessages: Record<string, string> = {
     ERR_ARGS_ERROR: "请求参数错误",
     ERR_TOKEN_INVALID: "非法的Token",
@@ -72,11 +72,27 @@ function getI18nMessage(errmsg: string, reason: string): string {
     ERR_PASSWORD_MISSING: "缺少密码",
     ERR_CAPTCHA_INVALID: "验证码错误",
     ERR_APPID_NOT_FOUND: "Appid不存在",
+    ERR_APPID_MISSING: "缺少Appid",
     ERR_USER_NOT_FOUND: "用户不存在",
     ERR_PASSWORD_ERROR: "密码错误",
     ERR_USER_DISABLED: "账号已被禁用",
+    ERR_USER_APPIDS: "用户未关联该应用",
     ERR_PERMISSION_DENY: "没有权限执行此操作",
-    ERR_LOGIN_NEED_SUPER_OR_ADMIN: "需要管理员用户来登录wolf管理台"
+    ERR_LOGIN_NEED_SUPER_OR_ADMIN: "需要管理员用户来登录wolf管理台",
+    ERR_LOGIN_TEMPORARILY_LOCKED: "登录失败次数过多，请稍后再试",
+    ERR_NOT_ALLOWED_RESET_PWD: "不允许重置密码",
+    ERR_OLD_PASSWORD_INCORRECT: "当前密码不正确",
+    ERR_NEW_PASSWORD_TOO_WEAK: "新密码强度不足",
+    ERR_NEW_PASSWORD_SAME_AS_OLD: "新密码不能与当前密码相同",
+    ERR_PASSWORD_CHANGE_NOT_ALLOWED: "不允许修改密码",
+    ERR_OLD_PASSWORD_REQUIRED: "请输入当前密码",
+    ERR_NEW_PASSWORD_REQUIRED: "请输入新密码",
+    ERR_REPEATED_PASSWORD_INCORRECT: "两次输入的新密码不一致",
+    ERR_MESSAGE_TOO_LONG: "消息过长",
+    ERR_SESSION_BUSY: "该会话已有请求正在处理",
+    ERR_OBJECT_NOT_FOUND: "对象不存在",
+    ERR_USERNAME_EXIST: "用户名已存在",
+    ERR_SORT_FIELD_INVALID: "排序字段无效"
   };
 
   if (reason && errorMessages[reason]) {

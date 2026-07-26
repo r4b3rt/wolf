@@ -583,8 +583,25 @@ wolf:
     ERR_USERNAME_MISSING: Username missing
     ERR_PASSWORD_MISSING: Password missing
     ERR_CAPTCHA_INVALID: Captcha error
+    ERR_APPID_NOT_FOUND: Appid not found
+    ERR_APPID_MISSING: Appid missing
     ERR_USER_NOT_FOUND: User not found
     ERR_PASSWORD_ERROR: Password error
     ERR_USER_DISABLED: Account disabled
+    ERR_USER_APPIDS: User is not associated with the app
     ERR_PERMISSION_DENY: Permission denied
     ERR_LOGIN_NEED_SUPER_OR_ADMIN: Need admin user to login wolf console
+    ERR_LOGIN_TEMPORARILY_LOCKED: Too many failed login attempts, try again later
+    ERR_NOT_ALLOWED_RESET_PWD: Not allowed to reset password
+    ERR_OLD_PASSWORD_INCORRECT: The current password is incorrect
+    ERR_NEW_PASSWORD_TOO_WEAK: The new password is too weak
+    ERR_NEW_PASSWORD_SAME_AS_OLD: The new password must differ from the current one
+    ERR_PASSWORD_CHANGE_NOT_ALLOWED: Password change is not allowed
+    ERR_OLD_PASSWORD_REQUIRED: Old password is required
+    ERR_NEW_PASSWORD_REQUIRED: New password is required
+    ERR_REPEATED_PASSWORD_INCORRECT: The password you entered repeatedly is incorrect
+    ERR_MESSAGE_TOO_LONG: The message is too long
+    ERR_SESSION_BUSY: This session already has a request in progress
+    ERR_OBJECT_NOT_FOUND: Object not found
+    ERR_USERNAME_EXIST: Username already exists
+    ERR_SORT_FIELD_INVALID: The sort field is not a valid column

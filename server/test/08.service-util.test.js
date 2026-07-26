@@ -555,6 +555,16 @@ describe('service-util', function() {
         assert.strictEqual(ctx.status, 400)
         assert.strictEqual(ctx.body.ok, false)
         assert.strictEqual(ctx.body.reason, 'ERR_BAD')
+        assert.strictEqual(ctx.body.errmsg, undefined)
+      })
+
+      it('fills errmsg for known error codes', function() {
+        const ctx = mockCtx()
+        const svc = new Service(ctx)
+        svc.fail(200, 'ERR_LOGIN_TEMPORARILY_LOCKED')
+        assert.strictEqual(ctx.body.ok, false)
+        assert.strictEqual(ctx.body.reason, 'ERR_LOGIN_TEMPORARILY_LOCKED')
+        assert.strictEqual(ctx.body.errmsg, 'Too many failed login attempts, try again later')
       })
 
       it('includes data when provided', function() {

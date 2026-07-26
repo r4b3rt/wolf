@@ -30,6 +30,8 @@ exports.ERR_LOGIN_TEMPORARILY_LOCKED = 'ERR_LOGIN_TEMPORARILY_LOCKED'
 exports.ERR_SORT_FIELD_INVALID = 'ERR_SORT_FIELD_INVALID'
 exports.ERR_MESSAGE_TOO_LONG = 'ERR_MESSAGE_TOO_LONG'
 exports.ERR_SESSION_BUSY = 'ERR_SESSION_BUSY'
+exports.ERR_CAPTCHA_INVALID = 'ERR_CAPTCHA_INVALID'
+exports.ERR_LOGIN_NEED_SUPER_OR_ADMIN = 'ERR_LOGIN_NEED_SUPER_OR_ADMIN'
 
 const msgs = {
   ERR_OBJECT_NOT_FOUND: 'Object not found',
@@ -64,6 +66,8 @@ const msgs = {
   ERR_SORT_FIELD_INVALID: 'The sort field is not a valid column',
   ERR_MESSAGE_TOO_LONG: 'The message is too long',
   ERR_SESSION_BUSY: 'This session already has a request in progress',
+  ERR_CAPTCHA_INVALID: 'Captcha is invalid',
+  ERR_LOGIN_NEED_SUPER_OR_ADMIN: 'Need admin user to login wolf console',
 }
 
 function errmsg(reason) {

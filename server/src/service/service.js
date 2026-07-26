@@ -110,7 +110,9 @@ class Service extends ArgsUtil {
 
   fail(status, reason, data=null) {
     this.ctx.status = status;
-    const body = json.fail(reason, '', data)
+    // 已知错误码自动附带可读 errmsg，避免前端只能展示裸 reason
+    const errmsg = errors.errmsg(reason) || ''
+    const body = json.fail(reason, errmsg, data)
     this.ctx.body = body
   }
 
