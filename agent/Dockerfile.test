@@ -1,0 +1,7 @@
+FROM openresty/openresty:alpine
+RUN apk add --no-cache lua5.1 lua5.1-dev luarocks gcc musl-dev make unzip curl git \
+    && luarocks-5.1 install busted \
+    && luarocks-5.1 install luacov \
+    && luarocks-5.1 install lua-cjson
+WORKDIR /opt/wolf/agent
+ENV PATH="/usr/local/bin:${PATH}"

@@ -3,7 +3,7 @@ const assert = require('assert')
 // sanitize-message (already exported)
 const { stripThinkingFromMessage, isThinkingStreamEvent } = require('../src/ai/sanitize-message')
 // generate-title (newly exported)
-const { buildTitlePrompts, stripXmlLikeTaggedBlocks, assistantPlainText } = require('../src/ai/generate-title')
+const { buildTitlePrompts, stripXmlLikeTaggedBlocks, assistantPlainText, buildDisableThinkingOnPayload } = require('../src/ai/generate-title')
 // system-prompt (already exported)
 const { buildSystemPrompt, isChineseLocale } = require('../src/ai/system-prompt')
 // tool-helper (already exported)
@@ -355,6 +355,17 @@ describe('ai-util', function() {
         assert.ok(prompt.includes('User Memory'))
         assert.ok(prompt.includes('likes dark mode'))
       })
+
+      it('uses unknown category label and manager none default', function() {
+        const prompt = buildSystemPrompt({ username: 'u', nickname: 'n' }, 'zh-CN', [
+          { id: 1, category: 'custom-cat', content: 'x' },
+        ])
+        assert.ok(prompt.includes('custom-cat'))
+        assert.ok(prompt.includes('普通用户') || prompt.includes('none') || prompt.includes('u'))
+        const en = buildSystemPrompt(undefined, 'en', [{ id: 1, category: 'zzz', content: 'y' }])
+        assert.ok(en.includes('zzz'))
+        assert.ok(en.includes('unknown'))
+      })
     })
   })
 
@@ -494,6 +505,40 @@ describe('ai-util', function() {
         const result = pruneMessages(msgs, 2)
         assert.deepStrictEqual(result, msgs)
       })
+
+      it('breaks when first toolResult has idx===0', function() {
+        // Same object at idx 0 and near the end: after trim, indexOf returns 0 → break
+        const tr = { role: 'toolResult', id: 1 }
+        const msgs = [
+          tr,
+          { role: 'assistant', id: 2 },
+          { role: 'user', id: 3 },
+          tr,
+          { role: 'user', id: 4 },
+        ]
+        const result = pruneMessages(msgs, 2)
+        assert.strictEqual(result.length, 2)
+        assert.strictEqual(result[0], tr)
+      })
+    })
+  })
+
+  describe('buildDisableThinkingOnPayload', function() {
+    it('returns undefined for non-mimo endpoints', function() {
+      assert.strictEqual(buildDisableThinkingOnPayload({ provider: 'openai', baseUrl: 'https://api.openai.com' }, {}), undefined)
+    })
+    it('detects mimo via thinkingFormat / provider / baseUrl', function() {
+      const a = buildDisableThinkingOnPayload({}, { thinkingFormat: 'mimo' })
+      const b = buildDisableThinkingOnPayload({ provider: 'mimo' }, {})
+      const c = buildDisableThinkingOnPayload({ baseUrl: 'https://api.xiaomi.com/v1' }, {})
+      assert.ok(typeof a === 'function')
+      assert.ok(typeof b === 'function')
+      assert.ok(typeof c === 'function')
+      const payload = {}
+      assert.strictEqual(a(payload), payload)
+      assert.deepStrictEqual(payload.thinking, { type: 'disabled' })
+      assert.strictEqual(a(null), undefined)
+      assert.strictEqual(a('x'), undefined)
     })
   })
 

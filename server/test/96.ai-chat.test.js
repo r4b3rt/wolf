@@ -27,7 +27,7 @@ describe_('ai-chat', function() {
     })
 
     it('create session', async function() {
-      const url = '/wolf/ai-chat/session'
+      const url = '/wolf/ai-chat/createSession'
       const schema = util.okSchema({
         type: 'object',
         properties: {
@@ -57,7 +57,7 @@ describe_('ai-chat', function() {
 
     it('rename session', async function() {
       if (!sessionId) { this.skip() }
-      const url = '/wolf/ai-chat/session/rename'
+      const url = '/wolf/ai-chat/renameSession'
       const body = { id: sessionId, title: 'Test Session Title' }
       const schema = util.okSchema({
         type: 'object',
@@ -70,32 +70,32 @@ describe_('ai-chat', function() {
     })
 
     it('rename session failed, missing id', async function() {
-      const url = '/wolf/ai-chat/session/rename'
+      const url = '/wolf/ai-chat/renameSession'
       const body = { title: 'Test' }
-      const schema = util.failSchema('ERR_ARGS_ERROR')
+      const schema = util.failSchema('ERR_ARGS_INVALID')
       await mocha.put({ url, headers, body, status: 400, schema })
     })
 
     it('rename session failed, missing title', async function() {
-      const url = '/wolf/ai-chat/session/rename'
-      const body = { id: sessionId }
-      const schema = util.failSchema('ERR_ARGS_ERROR')
+      const url = '/wolf/ai-chat/renameSession'
+      const body = { id: sessionId || 1 }
+      const schema = util.failSchema('ERR_ARGS_INVALID')
       await mocha.put({ url, headers, body, status: 400, schema })
     })
   })
 
   describe('chat', function() {
     it('chat post failed, empty message', async function() {
-      const url = '/wolf/ai-chat/chat-post'
+      const url = '/wolf/ai-chat/chat'
       const body = { message: '', sessionId }
-      const schema = util.failSchema('ERR_ARGS_ERROR')
+      const schema = util.failSchema('ERR_MESSAGE_REQUIRED')
       await mocha.post({ url, headers, body, status: 400, schema })
     })
 
     it('chat post failed, missing message', async function() {
-      const url = '/wolf/ai-chat/chat-post'
+      const url = '/wolf/ai-chat/chat'
       const body = { sessionId }
-      const schema = util.failSchema('ERR_ARGS_ERROR')
+      const schema = util.failSchema('ERR_MESSAGE_REQUIRED')
       await mocha.post({ url, headers, body, status: 400, schema })
     })
   })
@@ -134,14 +134,14 @@ describe_('ai-chat', function() {
     it('create memory failed, invalid category', async function() {
       const url = '/wolf/ai-chat/memory'
       const body = { category: 'invalid_cat', content: 'test' }
-      const schema = util.failSchema('ERR_ARGS_ERROR')
+      const schema = util.failSchema('ERR_INVALID_CATEGORY')
       await mocha.post({ url, headers, body, status: 400, schema })
     })
 
     it('create memory failed, empty content', async function() {
       const url = '/wolf/ai-chat/memory'
       const body = { category: 'preference', content: '' }
-      const schema = util.failSchema('ERR_ARGS_ERROR')
+      const schema = util.failSchema('ERR_CONTENT_REQUIRED')
       await mocha.post({ url, headers, body, status: 400, schema })
     })
 
@@ -152,9 +152,9 @@ describe_('ai-chat', function() {
       const schema = util.okSchema({
         type: 'object',
         properties: {
-          count: { type: 'integer' },
+          memory: { type: 'object' },
         },
-        required: ['count'],
+        required: ['memory'],
       })
       await mocha.put({ url, headers, body, schema })
     })
@@ -162,7 +162,7 @@ describe_('ai-chat', function() {
     it('update memory failed, missing id', async function() {
       const url = '/wolf/ai-chat/memory'
       const body = { category: 'knowledge', content: 'test' }
-      const schema = util.failSchema('ERR_ARGS_ERROR')
+      const schema = util.failSchema('ERR_MEMORY_ID_REQUIRED')
       await mocha.put({ url, headers, body, status: 400, schema })
     })
 
@@ -183,7 +183,7 @@ describe_('ai-chat', function() {
     it('delete memory failed, missing id', async function() {
       const url = '/wolf/ai-chat/memory'
       const body = {}
-      const schema = util.failSchema('ERR_ARGS_ERROR')
+      const schema = util.failSchema('ERR_MEMORY_ID_REQUIRED')
       await mocha.delete({ url, headers, body, status: 400, schema })
     })
   })
@@ -191,7 +191,7 @@ describe_('ai-chat', function() {
   // Cleanup
   after(async function() {
     if (sessionId) {
-      const url = '/wolf/ai-chat/session'
+      const url = '/wolf/ai-chat/deleteSession'
       const body = { id: sessionId }
       await mocha.delete({ url, headers, body }).catch(() => {})
     }

@@ -8,9 +8,18 @@
  * 4. 写入新记忆、废弃旧记忆、更新 session.memory_extracted_at
  */
 
-const { getWolfPiModel } = require('./agent-factory')
+const agentFactory = require('./agent-factory')
 const log4js = require('../util/log4js')
 const util = require('../util/util')
+
+/**
+ * Dynamic import of pi-ai completeSimple. Extracted so tests can stub it.
+ * @returns {Promise<{ completeSimple: Function }>}
+ */
+async function importCompleteSimple() {
+  const piAi = await import('@mariozechner/pi-ai')
+  return { completeSimple: piAi.completeSimple }
+}
 
 const MEMORY_CATEGORIES = ['preference', 'knowledge', 'decision', 'pattern']
 
@@ -118,8 +127,8 @@ async function callLlmForExtraction(conversation, existingMemories) {
   const existingMemoriesText = formatExistingMemories(existingMemories)
   const userPromptText = buildExtractionPrompt(conversation, existingMemoriesText)
 
-  const { model, wolfAiConf, provider } = await getWolfPiModel()
-  const { completeSimple } = await import('@mariozechner/pi-ai')
+  const { model, wolfAiConf, provider } = await agentFactory.getWolfPiModel()
+  const { completeSimple } = await module.exports.importCompleteSimple()
   const aiConfig = require('./ai-config')
   const { buildDisableThinkingOnPayload } = require('./generate-title')
   const apiKey = aiConfig.getApiKeyForProvider(provider)
@@ -312,4 +321,14 @@ async function triggerMemoryExtraction(userID, AiChatSessionModel, AiChatMessage
   }
 }
 
-module.exports = { triggerMemoryExtraction, MEMORY_CATEGORIES, extractText, serializeConversation, formatExistingMemories, buildExtractionPrompt }
+module.exports = {
+  triggerMemoryExtraction,
+  MEMORY_CATEGORIES,
+  extractText,
+  serializeConversation,
+  formatExistingMemories,
+  buildExtractionPrompt,
+  callLlmForExtraction,
+  extractMemoryForSession,
+  importCompleteSimple,
+}

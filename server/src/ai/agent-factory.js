@@ -10,26 +10,44 @@
 
 const aiConfig = require('./ai-config')
 const { buildSystemPrompt } = require('./system-prompt')
-const { getAllTools } = require('./tools/index')
+const toolsIndex = require('./tools/index')
 const log4js = require('../util/log4js')
 
 let _Agent = null
 let _getModel = null
 let _piLoaded = false
 
+/**
+ * Dynamic import of pi-mono ESM packages. Extracted so tests can stub it.
+ * @returns {Promise<{ Agent: Function, getModel: Function }>}
+ */
+async function importPiMono() {
+  const [agentCore, piAi] = await Promise.all([
+    import('@mariozechner/pi-agent-core'),
+    import('@mariozechner/pi-ai'),
+  ])
+  return { Agent: agentCore.Agent, getModel: piAi.getModel }
+}
+
 async function loadPiMono() {
   if (!_piLoaded) {
-    const [agentCore, piAi] = await Promise.all([
-      import('@mariozechner/pi-agent-core'),
-      import('@mariozechner/pi-ai'),
-    ])
+    const loaded = await module.exports.importPiMono()
     // @mariozechner/pi-ai 的 index.js 会自动注册所有内置 providers
-    _Agent = agentCore.Agent
-    _getModel = piAi.getModel
+    _Agent = loaded.Agent
+    _getModel = loaded.getModel
     _piLoaded = true
     log4js.info('[AgentFactory] pi-mono loaded successfully')
   }
   return { Agent: _Agent, getModel: _getModel }
+}
+
+/**
+ * Reset cached pi-mono modules (for tests).
+ */
+function resetPiMonoCache() {
+  _Agent = null
+  _getModel = null
+  _piLoaded = false
 }
 
 /**
@@ -136,7 +154,7 @@ async function createAgent({ userInfo, clientIp, messages = [], locale, memories
 
   log4js.info('[AgentFactory] creating agent: provider=%s, model=%s, user=%s, memories=%d', provider, modelId, userInfo && userInfo.username, memories.length)
 
-  const tools = await getAllTools(userInfo, clientIp)
+  const tools = await toolsIndex.getAllTools(userInfo, clientIp)
   const systemPrompt = buildSystemPrompt(userInfo, locale, memories)
 
   const agent = new Agent({
@@ -159,4 +177,11 @@ async function createAgent({ userInfo, clientIp, messages = [], locale, memories
   return agent
 }
 
-module.exports = { createAgent, loadPiMono, getWolfPiModel, pruneMessages }
+module.exports = {
+  createAgent,
+  loadPiMono,
+  getWolfPiModel,
+  pruneMessages,
+  importPiMono,
+  resetPiMonoCache,
+}

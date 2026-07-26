@@ -114,3 +114,4 @@ class WolfCache {
 }
 
 exports.WolfCache = WolfCache
+exports.RedisCache = RedisCache

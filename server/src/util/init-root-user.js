@@ -56,6 +56,9 @@ async function addRootUserWithRetry(maxRetries = 10, delayMs = 3000) {
 }
 
 // 初始延迟5秒，然后开始重试（最多10次，每次间隔3秒）
+/* istanbul ignore next */
 setTimeout(() => {
   addRootUserWithRetry(10, 3000);
 }, 5000);
+
+module.exports = { addRootUser, addRootUserWithRetry, createUser }

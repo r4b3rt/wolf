@@ -12,7 +12,10 @@ const _ = require('lodash');
 require('pg').defaults.parseInt8 = true
 
 const dbConfig = config.database
-const isMysql = config.database.url.substring(0, 8) === 'mysql://'
+// Mutable so unit tests can exercise the MySQL returning path without reloading the module.
+const dialectFlags = {
+  isMysql: config.database.url.substring(0, 8) === 'mysql://',
+}
 
 /**
  * update object, if effects < options.minEffects, throw ArgsError.
@@ -35,7 +38,7 @@ const mustUpdate = async function(values, options) {
 
   let effects = 0
   let newValues = null;
-  if (isMysql) {
+  if (dialectFlags.isMysql) {
     effects = result[1]
     if (returningAsList) {
       newValues = await this.findAll(options)
@@ -149,7 +152,7 @@ function objectSet(field_name) {
 
 function mysqlCustomDefine(modelName, attributes, options) {
   // 判断是否为mysql
-  if(!isMysql) {
+  if (!dialectFlags.isMysql) {
     return
   }
 
@@ -168,17 +171,19 @@ function mysqlCustomDefine(modelName, attributes, options) {
   }
 }
 
-let dialectOptions = {}
-if (isMysql) {
-  dialectOptions = {
-    supportBigNumbers: true,
-    // bigNumberStrings: true,
+function getDialectOptions(isMysql) {
+  if (isMysql) {
+    return {
+      supportBigNumbers: true,
+      // bigNumberStrings: true,
+    }
   }
-} else {
-  dialectOptions = {
+  return {
     useUTC: false, // for reading from database
   }
 }
+
+const dialectOptions = getDialectOptions(dialectFlags.isMysql)
 
 const sequelize = new Sequelize(dbConfig.url, {
   pool: {
@@ -216,3 +221,14 @@ function addMethodToModel() {
 addMethodToModel()
 
 module.exports = sequelize
+// Test helpers (ARRAY/JSONB getters and MySQL mustUpdate path)
+module.exports.__test = {
+  dialectFlags,
+  arrayGet,
+  arraySet,
+  objectGet,
+  objectSet,
+  mysqlCustomDefine,
+  getDialectOptions,
+  mustUpdate,
+}

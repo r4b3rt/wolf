@@ -16,8 +16,8 @@ const i18n = require('koa-i18n')
 const app = new Koa()
 const views = require('koa-views')
 const path = require('path')
-const { initRadixTreeCache } = require('./src/service/resource-cache')
-const { runStartupCheck } = require('./src/util/startup-check')
+const resourceCache = require('./src/service/resource-cache')
+const startupCheck = require('./src/util/startup-check')
 
 locale(app)
 
@@ -33,67 +33,75 @@ process.on('unhandledRejection', (reason, p) => {
 })
 
 let server = null
+let middlewareInstalled = false
+
+function resolvePort(env = process.env) {
+  return parseInt(env.PORT, 10) || 12180
+}
 
 async function startServer() {
   try {
-    runStartupCheck()
+    startupCheck.runStartupCheck()
 
-    app.on('error', (err, ctx) => {
-      log4js.error('app error: %s', err)
-    })
+    if (!middlewareInstalled) {
+      app.on('error', (err, ctx) => {
+        log4js.error('app error: %s', err)
+      })
 
-    app.use(logger((str, args) => {
-      log4js.info(str, args)
-    }))
-    app.use(accessLog())
-    app.use(views(path.join(__dirname, './tmpl'), {
-      map: { html: 'ejs' },
-    }))
-    app.use(i18n(app, {
-      directory: './conf/langs',
-      locales: ['en', 'zh-CN'], //  `en` defualtLocale, must match the locales to the filenames
-      modes: [
-        // 'query', //  optional detect querystring - `/?locale=en-US`
-        // 'subdomain', //  optional detect subdomain   - `zh-CN.koajs.com`
-        'cookie', //  optional detect cookie      - `Cookie: locale=zh-TW`
-        'header', //  optional detect header      - `Accept-Language: zh-CN,zh;q=0.5`
-        // 'url', //  optional detect url         - `/en`
-      ],
-    }))
-    app.use(cors({
-      origin: (ctx) => {
-        return '*'
-      },
-      maxAge: 5,
-      credentials: true,
-      allowMethods: ['GET', 'POST', 'DELETE', 'PUT', 'OPTIONS'],
-    }))
-    app.use(json())
-    app.use(bodyparser({
-      enableTypes: ['json', 'form', 'text'],
-    }))
-    app.use(errorCatch())
-    app.use(tokenCheck())
-    app.use(rbacTokenCheck())
-    app.use(staticServer(path.join(__dirname, 'html')))
-    app.use(router.routes())
-    // app.use(router.allowedMethods())
-    await initRadixTreeCache()  // 在启动服务器之前初始化RadixTree缓存
-    const port = parseInt(process.env.PORT, 10) || 12180
+      app.use(logger((str, args) => {
+        log4js.info(str, args)
+      }))
+      app.use(accessLog())
+      app.use(views(path.join(__dirname, './tmpl'), {
+        map: { html: 'ejs' },
+      }))
+      app.use(i18n(app, {
+        directory: './conf/langs',
+        locales: ['en', 'zh-CN'], //  `en` defualtLocale, must match the locales to the filenames
+        modes: [
+          // 'query', //  optional detect querystring - `/?locale=en-US`
+          // 'subdomain', //  optional detect subdomain   - `zh-CN.koajs.com`
+          'cookie', //  optional detect cookie      - `Cookie: locale=zh-TW`
+          'header', //  optional detect header      - `Accept-Language: zh-CN,zh;q=0.5`
+          // 'url', //  optional detect url         - `/en`
+        ],
+      }))
+      app.use(cors({
+        origin: (ctx) => {
+          return '*'
+        },
+        maxAge: 5,
+        credentials: true,
+        allowMethods: ['GET', 'POST', 'DELETE', 'PUT', 'OPTIONS'],
+      }))
+      app.use(json())
+      app.use(bodyparser({
+        enableTypes: ['json', 'form', 'text'],
+      }))
+      app.use(errorCatch())
+      app.use(tokenCheck())
+      app.use(rbacTokenCheck())
+      app.use(staticServer(path.join(__dirname, 'html')))
+      app.use(router.routes())
+      // app.use(router.allowedMethods())
+      middlewareInstalled = true
+    }
+    await resourceCache.initRadixTreeCache()  // 在启动服务器之前初始化RadixTree缓存
+    const port = resolvePort()
     server = app.listen(port)
     console.log('listen at 0.0.0.0:%s success!', port)
     log4js.info('listen at 0.0.0.0:%s success!', port)
     return server
   } catch (ex) {
-    /* istanbul ignore next */
     log4js.error('app global catch', ex)
     throw ex
   }
 }
 
 // 只在直接运行时启动服务器
+/* istanbul ignore next */
 if (require.main === module) {
   startServer()
 }
 
-module.exports = { app, startServer }
+module.exports = { app, startServer, resolvePort }

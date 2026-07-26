@@ -1,0 +1,11 @@
+return {
+  _all = {
+    lpath = "./lua/?.lua;./spec/?.lua;./spec/helper/?.lua",
+    helper = "spec/helper/ngx_mock.lua",
+    verbose = true,
+    ["coverage"] = false,
+  },
+  unit = {
+    ROOT = {"spec/unit"},
+  },
+}

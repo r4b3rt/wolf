@@ -4,13 +4,15 @@ local json = require("json")
 local agent_pub = require("agent_pub")
 local config = require("config")
 
+local _M = {}
+
 local login_url = "/wolf/rbac/login.html"
 local no_permission = "/wolf/rbac/no_permission"
 local no_permission_html = "/wolf/rbac/no_permission.html"
 local access_check_url = "/wolf/rbac/access_check"
 
 
-function get_token()
+function _M.get_token()
 	local cookie, err = resty_cookie:new()
     if not cookie then
         ngx.log(ngx.ERR, "resty_cookie:new() failed!", err)
@@ -22,7 +24,7 @@ function get_token()
 	return token
 end
 
-local function get_host_port()
+function _M.get_host_port()
     local host = ngx.var.host
     local port = ""
     if ngx.var.server_port and ngx.var.server_port ~= 80 then
@@ -32,9 +34,9 @@ local function get_host_port()
     return host_port
 end
 
-local function url_args_as_args(ext_args)
+function _M.url_args_as_args(ext_args)
 	local args = ngx.req.get_uri_args()
-    local host_port = get_host_port()
+    local host_port = _M.get_host_port()
 
     local full_url = host_port .. ngx.var.uri
 	args["return_to"] = full_url
@@ -46,7 +48,7 @@ local function url_args_as_args(ext_args)
 	return args
 end
 
-local function check_url_permission(appID, action, resName, clientIP)
+function _M.check_url_permission(appID, action, resName, clientIP)
     local retry_max = 3
     local reason = nil;
     local userInfo = nil
@@ -103,7 +105,7 @@ local function check_url_permission(appID, action, resName, clientIP)
 end
 
 
-local function url_redirect(url, args)
+function _M.url_redirect(url, args)
     local appID = ngx.var.appID or "appIDUnset"
     args.appid = appID
     args = ngx.encode_args(args)
@@ -112,7 +114,7 @@ end
 
 -- 在 access 阶段发送错误响应并终止请求。
 -- 必须 ngx.exit，否则 nginx 会继续进入 content 阶段并 proxy_pass（fail-open）。
-local function deny(status, message)
+function _M.deny(status, message)
     ngx.status = status
     ngx.header["Content-Type"] = "text/plain"
     ngx.send_headers()
@@ -122,7 +124,7 @@ local function deny(status, message)
     return ngx.exit(status)
 end
 
-local function access_check()
+function _M.run()
     local url = ngx.var.uri
     local action = ngx.req.get_method()
 
@@ -140,17 +142,17 @@ local function access_check()
     local permItem = "{appID: " .. appID .. ", action: " .. action .. ", url: " .. url .. ", clientIP: " .. clientIP .. "}"
 	ngx.log(ngx.INFO, "Cookie: ", ngx.var.http_cookie, ", permItem=", permItem)
 
-	local token = get_token()
+	local token = _M.get_token()
 	if token == nil then
 		ngx.log(ngx.WARN, "no permission to access ", permItem, ", need login!")
-        return url_redirect(login_url, url_args_as_args())
+        return _M.url_redirect(login_url, _M.url_args_as_args())
 	elseif token == "logouted" then
 		ngx.log(ngx.WARN, "logouted, no permission to access [", permItem, "], need login!")
-        return url_redirect(login_url, url_args_as_args())
+        return _M.url_redirect(login_url, _M.url_args_as_args())
 	end
 
     ngx.ctx.token = token
-    local ok, status, reason, userInfo, headers = check_url_permission(appID, action, url, clientIP)
+    local ok, status, reason, userInfo, headers = _M.check_url_permission(appID, action, url, clientIP)
 	ngx.log(ngx.INFO, " check_url_permission(", permItem, ",token=", tostring(token), ")=",
         ok, ", status:", tostring(status), ", userInfo:", tostring(json.dumps(userInfo)))
 
@@ -180,22 +182,22 @@ local function access_check()
 		-- no permission.
 		if status == ngx.HTTP_UNAUTHORIZED or status == ngx.HTTP_FORBIDDEN then
 			if reason == "ERR_TOKEN_INVALID" then
-                return url_redirect(login_url, url_args_as_args())
+                return _M.url_redirect(login_url, _M.url_args_as_args())
             else
                 local redirect_url = no_permission
                 if url == '/' then
                     redirect_url = no_permission_html
                 end
-                return url_redirect(redirect_url, { username = username, reason=reason })
+                return _M.url_redirect(redirect_url, { username = username, reason=reason })
             end
         elseif status == ngx.HTTP_BAD_REQUEST then
-            return deny(ngx.HTTP_INTERNAL_SERVER_ERROR,
+            return _M.deny(ngx.HTTP_INTERNAL_SERVER_ERROR,
                 "rbac check permission failed! status:" .. tostring(status))
 		else
-            return deny(status or ngx.HTTP_FORBIDDEN,
+            return _M.deny(status or ngx.HTTP_FORBIDDEN,
                 "rbac check permission failed! status:" .. tostring(status))
 		end
 	end
 end
 
-access_check()
+return _M

@@ -1,59 +1,27 @@
 
 ### 执行单元测试
 
-单元测试目前仅对服务器API接口部分. 执行如下命令,进行单元测试:
+#### Server（Node / Mocha / nyc）
 
-```
+```bash
 cd wolf/server
-pnpm run test
+pnpm run test          # 常规单元/集成测试 + 覆盖率门禁
+pnpm run test:all      # 含 AI 集成测试（需配置 AI API Key，RUN_AI_TESTS=yes）
+pnpm run test4redis    # Redis 缓存路径（MEM_CACHE_BY_REDIS=yes）
 ```
 
-执行完成后, 如果测试都成功, 输出大概如下:
+执行完成后，若测试全部成功，会在 `server/coverage` 生成 HTML/lcov 报告；`nyc` 会强制检查覆盖率阈值（Statements/Lines/Functions ≥95%，Branches ≥90%），未达标则命令非 0 退出。
 
-```
-➜  server git:(master) ✗ pnpm run test
+当前覆盖率（`pnpm run test:all`，约 1038 passing）：
 
-> wolf-server@0.1.0 test
-> ./node_modules/.bin/nyc --reporter=html mocha test/*.test.js --exit --timeout 10000
+| 指标 | 覆盖率 |
+|------|--------|
+| Statements | 96.9% |
+| Branches | 90.2% |
+| Functions | 96.01% |
+| Lines | 97.06% |
 
-  framework
-    router
-user [root] is exist!
-      ✔ ping (38ms)
-      ✔ not found 001 (286ms)
-user [admin] is exist!
-      ✔ not found 002 (44ms)
-      ✔ request internal method start with _ (68ms)
-    token check
-      ✔ token missing
-      ✔ token invalid
-      ✔ token ok (51ms)
-
-    ......
-
-      ✔ userInfo success by refreshTokenInfo1.access_token (59ms)
-      ✔ access check success by refreshTokenInfo1.access_token (100ms)
-      ✔ userInfo failed, token expired (2019ms)
-      ✔ token by password success (102ms)
-      ✔ access check failed, token missing
-      ✔ access check success (52ms)
-      ✔ token by password failed, User not found (41ms)
-      ✔ token by password failed, Password is incorrect (179ms)
-      ✔ token by client_credentials success
-      ✔ userInfo success by clientCredentialsTokenInfo.access_token
-    rbac-destroy
-      ✔ application (58ms)
-      ✔ category (54ms)
-      ✔ permission (40ms)
-      ✔ role
-      ✔ user (530ms)
-      ✔ resource
-
-
-  317 passing (36s)
-```
-
-单元测试全部执行完成后,会在`server/coverage`生成覆盖率报告. 目前的代码语句覆盖率在`92%`左右.
+说明：`src/util/radixtree.js`（已失效的 `rou3` 依赖，生产使用 `rax-radix-tree`）不计入覆盖率阈值。
 
 | ![覆盖率-概览](./imgs/screenshot/coverage-overview.png) |
 |:--:|
@@ -64,3 +32,20 @@ user [admin] is exist!
 |:--:|
 | *覆盖率-详情* |
 
+#### Agent（OpenResty Lua / busted / luacov）
+
+```bash
+cd wolf/agent
+make test-docker       # 推荐：与生产同 openresty alpine 镜像跑用例 + 覆盖率
+# 或本机已装 luarocks/busted 时：
+make coverage
+```
+
+当前覆盖率（`make test-docker`，58 successes）：
+
+| 指标 | 覆盖率 |
+|------|--------|
+| Line（agent `lua/`） | 99.78% |
+| Branch case matrix | 32/32 |
+
+说明：第三方 vendored 文件 `lua/resty/cookie.lua` 与薄入口 `*_main.lua` 不计入覆盖率阈值。

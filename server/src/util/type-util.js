@@ -72,3 +72,5 @@ exports.isValidType = isValidType
 exports.getType = getType
 exports.isObject = isObject
 exports.isArray = isArray
+exports.isInt = isInt
+exports.isFloat = isFloat

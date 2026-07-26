@@ -19,7 +19,7 @@ if [ ! -n "${EXTENSION_CONFIG}" ]; then
 fi
 
 if [ ! -n "${ACCESS_CHECK_LUA}" ]; then
-  ACCESS_CHECK_LUA="access_check.lua"
+  ACCESS_CHECK_LUA="access_check_main.lua"
 fi
 
 
@@ -28,7 +28,7 @@ sed -e "s|http://127.0.0.1:12184|${BACKEND_URL}|" \
   -e "s/unknow/${RBAC_APP_ID}/" \
   -e "s/12182/${AGENT_PORT}/" \
   -e "s|#EXTENSION_CONFIG|${EXTENSION_CONFIG}|" \
-  -e "s|access_check.lua|${ACCESS_CHECK_LUA}|" \
+  -e "s|access_check_main.lua|${ACCESS_CHECK_LUA}|" \
   conf/server-demo.conf \
   > /etc/nginx/conf.d/app-${RBAC_APP_ID}.conf
 

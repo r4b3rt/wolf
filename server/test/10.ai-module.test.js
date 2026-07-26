@@ -168,6 +168,9 @@ describe('ai-module', function() {
         assert.deepStrictEqual(Object.keys(cfg).sort(), [
           'api',
           'maxHistoryMessages',
+          'maxMemoryItemLength',
+          'maxMemorySectionLength',
+          'maxMessageLength',
           'maxTurns',
           'modelReasoning',
           'thinkingFormat',

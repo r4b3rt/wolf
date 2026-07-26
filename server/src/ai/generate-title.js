@@ -3,7 +3,16 @@
  */
 
 const aiConfig = require('./ai-config')
-const { getWolfPiModel } = require('./agent-factory')
+const agentFactory = require('./agent-factory')
+
+/**
+ * Dynamic import of pi-ai completeSimple. Extracted so tests can stub it.
+ * @returns {Promise<{ completeSimple: Function }>}
+ */
+async function importCompleteSimple() {
+  const piAi = await import('@mariozechner/pi-ai')
+  return { completeSimple: piAi.completeSimple }
+}
 
 /**
  * @param {string} locale - e.g. zh-CN, en
@@ -100,8 +109,8 @@ async function generateSessionTitle(conversationText, locale) {
   const trimmed = (conversationText || '').trim()
   if (!trimmed) return ''
 
-  const { completeSimple } = await import('@mariozechner/pi-ai')
-  const { model, wolfAiConf, provider } = await getWolfPiModel()
+  const { completeSimple } = await module.exports.importCompleteSimple()
+  const { model, wolfAiConf, provider } = await agentFactory.getWolfPiModel()
   const apiKey = aiConfig.getApiKeyForProvider(provider)
   if (!apiKey) {
     throw new Error('No API key for title generation')
@@ -144,4 +153,5 @@ module.exports = {
   stripXmlLikeTaggedBlocks,
   assistantPlainText,
   buildDisableThinkingOnPayload,
+  importCompleteSimple,
 }

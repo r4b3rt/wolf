@@ -531,6 +531,150 @@ describe('rbac-token-check middleware', function() {
       }
     )
   })
+
+  function basicAuthHeader(username, password) {
+    const b64 = Buffer.from(`${username}:${password}`).toString('base64')
+    return `Basic ${b64}`
+  }
+
+  it('basicAuth: throws on malformed authorization header', async function() {
+    const ctx = mockCtx({
+      method: 'GET',
+      path: '/wolf/rbac/resource',
+      headers: { authorization: 'BasicOnly' },
+    })
+    ctx.cookies = { get() { return undefined } }
+    await assert.rejects(() => rbacTokenCheck(ctx, () => Promise.resolve()), RbacTokenError)
+  })
+
+  it('basicAuth: user not found', async function() {
+    userCache.getUserInfoByName = async () => ({ userInfo: null, cached: 'miss' })
+    const ctx = mockCtx({
+      method: 'GET',
+      path: '/wolf/rbac/resource',
+      headers: { authorization: basicAuthHeader('nouser', 'pwd') },
+    })
+    ctx.cookies = { get() { return undefined } }
+    await assert.rejects(
+      () => rbacTokenCheck(ctx, () => Promise.resolve()),
+      (err) => err.message === 'TOKEN_USER_NOT_FOUND',
+    )
+  })
+
+  it('basicAuth: non-password auth type', async function() {
+    userCache.getUserInfoByName = async () => ({
+      userInfo: { id: 1, username: 'ldap', authType: constant.AuthType.LDAP, password: 'x', status: constant.UserStatus.Normal },
+      cached: 'miss',
+    })
+    const ctx = mockCtx({
+      method: 'GET',
+      path: '/wolf/rbac/resource',
+      headers: { authorization: basicAuthHeader('ldap', 'pwd') },
+    })
+    ctx.cookies = { get() { return undefined } }
+    await assert.rejects(() => rbacTokenCheck(ctx, () => Promise.resolve()), RbacTokenError)
+  })
+
+  it('basicAuth: password error', async function() {
+    const util = require('../src/util/util')
+    const hashed = util.encodePassword('correct')
+    userCache.getUserInfoByName = async () => ({
+      userInfo: {
+        id: 2, username: 'u2', authType: constant.AuthType.PASSWORD,
+        password: hashed, status: constant.UserStatus.Normal, appIDs: ['app1'],
+      },
+      cached: 'miss',
+    })
+    const ctx = mockCtx({
+      method: 'GET',
+      path: '/wolf/rbac/resource',
+      headers: { authorization: basicAuthHeader('u2', 'wrong') },
+    })
+    ctx.cookies = { get() { return undefined } }
+    await assert.rejects(() => rbacTokenCheck(ctx, () => Promise.resolve()), RbacTokenError)
+  })
+
+  it('basicAuth: disabled user', async function() {
+    const util = require('../src/util/util')
+    const hashed = util.encodePassword('pwd')
+    userCache.getUserInfoByName = async () => ({
+      userInfo: {
+        id: 3, username: 'u3', authType: constant.AuthType.PASSWORD,
+        password: hashed, status: constant.UserStatus.Disabled, appIDs: [],
+      },
+      cached: 'miss',
+    })
+    const ctx = mockCtx({
+      method: 'GET',
+      path: '/wolf/rbac/resource',
+      headers: { authorization: basicAuthHeader('u3', 'pwd') },
+    })
+    ctx.cookies = { get() { return undefined } }
+    await assert.rejects(
+      () => rbacTokenCheck(ctx, () => Promise.resolve()),
+      (err) => err.message === 'USER_IS_DISABLED',
+    )
+  })
+
+  it('basicAuth: appID not associated', async function() {
+    const util = require('../src/util/util')
+    const hashed = util.encodePassword('pwd')
+    userCache.getUserInfoByName = async () => ({
+      userInfo: {
+        id: 4, username: 'u4', authType: constant.AuthType.PASSWORD,
+        password: hashed, status: constant.UserStatus.Normal, appIDs: ['other'],
+      },
+      cached: 'miss',
+    })
+    const ctx = mockCtx({
+      method: 'GET',
+      path: '/wolf/rbac/resource',
+      headers: { authorization: basicAuthHeader('u4', 'pwd') },
+      query: { appID: 'app1' },
+    })
+    ctx.cookies = { get() { return undefined } }
+    await assert.rejects(
+      () => rbacTokenCheck(ctx, () => Promise.resolve()),
+      (err) => err.message === 'ERR_USER_APPIDS',
+    )
+  })
+
+  it('basicAuth: success sets userInfo and headers', async function() {
+    const util = require('../src/util/util')
+    const hashed = util.encodePassword('pwd')
+    const origin = {
+      id: 5, username: 'u5', authType: constant.AuthType.PASSWORD,
+      password: hashed, status: constant.UserStatus.Normal, appIDs: ['app1'],
+    }
+    userCache.getUserInfoByName = async () => ({ userInfo: origin, cached: 'miss' })
+    userCache.getUserInfoById = async () => ({
+      userInfo: { id: 5, username: 'u5', status: constant.UserStatus.Normal },
+      cached: 'miss',
+    })
+    const ctx = mockCtx({
+      method: 'GET',
+      path: '/wolf/rbac/resource',
+      headers: { authorization: basicAuthHeader('u5', 'pwd') },
+      query: { appID: 'app1' },
+    })
+    ctx.cookies = { get() { return undefined } }
+    const nextCalled = { value: false }
+    await rbacTokenCheck(ctx, () => { nextCalled.value = true; return Promise.resolve() })
+    assert.strictEqual(nextCalled.value, true)
+    assert.strictEqual(ctx.userInfo.username, 'u5')
+    assert.strictEqual(ctx.appid, 'app1')
+    assert.strictEqual(ctx._responseHeaders['x-rbac-username'], 'u5')
+  })
+
+  it('swallows setResponseInfo errors on token path', async function() {
+    const userInfo = { id: 10, username: 'rbacuser', status: constant.UserStatus.Normal }
+    tokenUtil.tokenCheck = async () => ({ id: 10, username: 'rbacuser', appid: 'myapp' })
+    userCache.getUserInfoById = async () => ({ userInfo, cached: 'miss' })
+    const ctx = mockCtx({ method: 'GET', path: '/wolf/rbac/resource', headers: { 'x-rbac-token': 'good.token' } })
+    ctx.set = () => { throw new Error('set failed') }
+    await rbacTokenCheck(ctx, () => Promise.resolve())
+    assert.strictEqual(ctx.userInfo.id, 10)
+  })
 })
 
 // ─────────────────────────── access-log ───────────────────────────

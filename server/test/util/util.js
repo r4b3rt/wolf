@@ -270,9 +270,25 @@ function getRbacCookie(cookies) {
   return cookie;
 }
 
+// Load-time: raise throttle ceiling before any describe runs intentional failed logins.
+{
+  const config = require('../../conf/config')
+  config.loginMaxFails = Math.max(config.loginMaxFails || 0, 10000)
+}
+
 before(async () => {
   if (exports.ignoreInit) {
     return
+  }
+  const config = require('../../conf/config')
+  config.loginMaxFails = Math.max(config.loginMaxFails || 0, 10000)
+  try {
+    const loginThrottle = require('../../src/util/login-throttle')
+    if (loginThrottle.flushForTests) {
+      await loginThrottle.flushForTests()
+    }
+  } catch (e) {
+    // ignore
   }
   // super user
   const {token: adminToken} = await adminLoginInternal(headers, 'root', defPassword())

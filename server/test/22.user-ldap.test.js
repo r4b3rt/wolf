@@ -156,6 +156,8 @@ describe('user', function() {
 
   it('login failed, user not found', async function() {
     dynamic_set_ldap_config();
+    // Admin bind needs mock entities; missing uid then yields LdapAuthenticationError → ERR_USER_NOT_FOUND
+    dynamic_set_ldap_mock_entities()
     const schema = util.failSchema('ERR_USER_NOT_FOUND');
     const username = 'user-not-found'
     const password = 'password'

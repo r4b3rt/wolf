@@ -166,6 +166,82 @@ describe('service-util', function() {
         assert.strictEqual(await cache1.get('shared'), 'v1')
         assert.strictEqual(await cache2.get('shared'), 'v2')
       })
+
+      it('uses checkperiod=1 when ttl is tiny', function() {
+        const tiny = new WolfCache('tiny-ttl', 1)
+        assert.strictEqual(tiny.cacheByRedis, false)
+      })
+    })
+  })
+
+  describe('WolfCache (RedisCache path)', function() {
+    const origFlag = config.memCacheByRedis
+    const redisUtil = require('../src/util/redis-util')
+    let RedisWolfCache
+
+    before(function() {
+      config.memCacheByRedis = true
+      delete require.cache[require.resolve('../src/util/wolf-cache')]
+      RedisWolfCache = require('../src/util/wolf-cache').WolfCache
+    })
+
+    after(function() {
+      config.memCacheByRedis = origFlag
+      delete require.cache[require.resolve('../src/util/wolf-cache')]
+      require('../src/util/wolf-cache')
+    })
+
+    it('set/get/del/flushAll via mocked redis client', async function() {
+      const kv = new Map()
+      const sets = new Map()
+      const origSet = redisUtil.redisClient.set
+      const origGet = redisUtil.redisClient.get
+      const origDel = redisUtil.redisClient.del
+      const origSadd = redisUtil.redisClient.sadd
+      const origExpire = redisUtil.redisClient.expire
+      const origSmembers = redisUtil.redisClient.smembers
+      const origMulti = redisUtil.redisClient.multi
+
+      redisUtil.redisClient.set = async (key, value) => { kv.set(key, value); return 'OK' }
+      redisUtil.redisClient.get = async (key) => (kv.has(key) ? kv.get(key) : null)
+      redisUtil.redisClient.del = async (key) => { kv.delete(key); sets.delete(key); return 1 }
+      redisUtil.redisClient.sadd = async (skey, key) => {
+        if (!sets.has(skey)) sets.set(skey, new Set())
+        sets.get(skey).add(key)
+        return 1
+      }
+      redisUtil.redisClient.expire = async () => 1
+      redisUtil.redisClient.smembers = async (skey) => Array.from(sets.get(skey) || [])
+      redisUtil.redisClient.multi = (ops) => ({
+        exec: async () => {
+          for (const op of ops) {
+            if (op[0] === 'del') kv.delete(op[1])
+          }
+          return []
+        },
+      })
+
+      try {
+        const c = new RedisWolfCache('redis-ut:')
+        assert.strictEqual(c.cacheByRedis, true)
+        await c.set('a', { x: 1 })
+        assert.deepStrictEqual(await c.get('a'), { x: 1 })
+        await c.set('b', undefined)
+        assert.strictEqual(await c.get('b'), undefined)
+        await c.set('c', 's')
+        assert.strictEqual(await c.get('c'), 's')
+        await c.del('c')
+        assert.ok((await c.get('c')) == null)
+        await c.flushAll()
+      } finally {
+        redisUtil.redisClient.set = origSet
+        redisUtil.redisClient.get = origGet
+        redisUtil.redisClient.del = origDel
+        redisUtil.redisClient.sadd = origSadd
+        redisUtil.redisClient.expire = origExpire
+        redisUtil.redisClient.smembers = origSmembers
+        redisUtil.redisClient.multi = origMulti
+      }
     })
   })
 

@@ -11,6 +11,7 @@ const aiConfig = require('../src/ai/ai-config')
 const agentFactory = require('../src/ai/agent-factory')
 const generateTitle = require('../src/ai/generate-title')
 const memoryExtractor = require('../src/ai/memory-extractor')
+const sessionLock = require('../src/ai/session-lock')
 
 // The module under test
 const AiChat = require('../src/controllers/ai-chat')
@@ -67,6 +68,7 @@ function mockCtx(method, body, query, headers) {
       write: () => {},
       end: () => {},
       on: () => {},
+      removeListener: () => {},
       setHeader: () => {},
       statusCode: 200,
     },
@@ -120,6 +122,8 @@ const orig = {
   createAgent: agentFactory.createAgent,
   generateSessionTitle: generateTitle.generateSessionTitle,
   triggerMemoryExtraction: memoryExtractor.triggerMemoryExtraction,
+  sessionAcquire: sessionLock.acquire,
+  sessionRelease: sessionLock.release,
 }
 
 function noop() { return Promise.resolve() }
@@ -168,6 +172,8 @@ function restoreAll() {
   agentFactory.createAgent = orig.createAgent
   generateTitle.generateSessionTitle = orig.generateSessionTitle
   memoryExtractor.triggerMemoryExtraction = orig.triggerMemoryExtraction
+  sessionLock.acquire = orig.sessionAcquire
+  sessionLock.release = orig.sessionRelease
 }
 
 // ---- Tests ----
@@ -179,6 +185,8 @@ describe('ai-chat controller (unit)', function() {
     agentFactory.createAgent = async () => new MockAgent()
     generateTitle.generateSessionTitle = async () => 'AI Title'
     memoryExtractor.triggerMemoryExtraction = async () => {}
+    sessionLock.acquire = async () => true
+    sessionLock.release = async () => {}
   })
   afterEach(function() { restoreAll() })
 
@@ -432,8 +440,40 @@ describe('ai-chat controller (unit)', function() {
       await svc.autoRenameSession()
       assertFail(ctx, 400, 'ERR_NO_MESSAGES_FOR_TITLE')
     })
-    // NOTE: generateSessionTitle is destructured at import time in ai-chat.js,
-    // so we cannot mock it by patching the module object. These tests are skipped.
+    it('renames when title generated', async function() {
+      AiChatSessionModel.findOne = () => Promise.resolve(mockModelObj({ id: 5, title: 'old' }))
+      AiChatMessageModel.findAll = () => Promise.resolve([
+        { role: 'user', content: { role: 'user', content: [{ type: 'text', text: 'hello' }] } },
+      ])
+      generateTitle.generateSessionTitle = async () => 'New Title'
+      const ctx = mockCtx('POST', { id: 5 })
+      const svc = new AiChat(ctx)
+      await svc.autoRenameSession()
+      assertSuccess(ctx)
+      assert.strictEqual(ctx.body.data.title, 'New Title')
+    })
+    it('fails when generated title empty', async function() {
+      AiChatSessionModel.findOne = () => Promise.resolve(mockModelObj({ id: 5 }))
+      AiChatMessageModel.findAll = () => Promise.resolve([
+        { role: 'user', content: { role: 'user', content: [{ type: 'text', text: 'hello' }] } },
+      ])
+      generateTitle.generateSessionTitle = async () => ''
+      const ctx = mockCtx('POST', { id: 5 })
+      const svc = new AiChat(ctx)
+      await svc.autoRenameSession()
+      assertFail(ctx, 500, 'ERR_TITLE_GENERATION_EMPTY')
+    })
+    it('fails when title generation throws', async function() {
+      AiChatSessionModel.findOne = () => Promise.resolve(mockModelObj({ id: 5 }))
+      AiChatMessageModel.findAll = () => Promise.resolve([
+        { role: 'user', content: { role: 'user', content: [{ type: 'text', text: 'hello' }] } },
+      ])
+      generateTitle.generateSessionTitle = async () => { throw new Error('llm') }
+      const ctx = mockCtx('POST', { id: 5 })
+      const svc = new AiChat(ctx)
+      await svc.autoRenameSession()
+      assertFail(ctx, 500, 'ERR_TITLE_GENERATION_FAILED')
+    })
   })
 
   // ==== memories() ====
@@ -639,6 +679,7 @@ describe('ai-chat controller (unit)', function() {
         write(data) { sseData.push(data) },
         end() {},
         on() {},
+        removeListener() {},
         setHeader() {},
         statusCode: 200,
       }
@@ -660,6 +701,7 @@ describe('ai-chat controller (unit)', function() {
         write(data) { sseData.push(data) },
         end() {},
         on() {},
+        removeListener() {},
         setHeader() {},
         statusCode: 200,
       }
@@ -685,8 +727,82 @@ describe('ai-chat controller (unit)', function() {
       const doneEvt = parsed.find(e => e.type === 'done')
       assert.ok(doneEvt, 'should have done event')
     })
-    // NOTE: 'uses existing session' test removed — createAgent is destructured at
-    // import time in ai-chat.js and cannot be mocked by patching the module object.
+    it('returns 429 when session lock busy', async function() {
+      sessionLock.acquire = async () => false
+      const ctx = mockCtx('POST', { message: 'hi', sessionId: 10 })
+      const svc = new AiChat(ctx)
+      await svc.chatPost()
+      assertFail(ctx, 429, 'ERR_SESSION_BUSY')
+    })
+    it('forwards tool_execution events and releases lock', async function() {
+      class ToolAgent extends MockAgent {
+        async prompt() {
+          this.emit('agent_start', {})
+          this.emit('tool_execution_start', { toolName: 'list_users', toolCallId: 'c1', args: {} })
+          this.emit('tool_execution_end', { toolName: 'list_users', toolCallId: 'c1', result: { ok: true }, isError: false })
+          this.emit('message_end', {
+            message: {
+              role: 'assistant',
+              content: [{ type: 'text', text: 'done' }],
+              usage: { inputTokens: 1, outputTokens: 1, cost: { total: 0 } },
+            },
+          })
+          this.emit('turn_end', { toolResults: [] })
+          this.emit('agent_end', {})
+        }
+      }
+      let released = false
+      sessionLock.acquire = async () => true
+      sessionLock.release = async () => { released = true }
+      agentFactory.createAgent = async () => new ToolAgent()
+      AiChatSessionModel.findOne = () => Promise.resolve(mockModelObj({ id: 10, userID: 1 }))
+      const sseData = []
+      const ctx = mockCtx('POST', { message: 'run tool', sessionId: 10 })
+      ctx.res = {
+        write(data) { sseData.push(data) },
+        end() {},
+        on() {},
+        removeListener() {},
+        setHeader() {},
+        statusCode: 200,
+      }
+      const svc = new AiChat(ctx)
+      await svc.chatPost()
+      const parsed = sseData.map(d => {
+        const m = d.match(/^data: (.+)\n\n$/)
+        return m ? JSON.parse(m[1]) : null
+      }).filter(Boolean)
+      assert.ok(parsed.find(e => e.type === 'tool_execution_start'))
+      assert.ok(parsed.find(e => e.type === 'tool_execution_end'))
+      assert.strictEqual(released, true)
+    })
+    it('SSE error when agent produces no assistant reply', async function() {
+      class EmptyAgent extends MockAgent {
+        async prompt() {
+          this.emit('agent_start', {})
+          this.emit('agent_end', {})
+        }
+      }
+      agentFactory.createAgent = async () => new EmptyAgent()
+      AiChatSessionModel.findOne = () => Promise.resolve(mockModelObj({ id: 10, userID: 1 }))
+      const sseData = []
+      const ctx = mockCtx('POST', { message: 'hi', sessionId: 10 })
+      ctx.res = {
+        write(data) { sseData.push(data) },
+        end() {},
+        on() {},
+        removeListener() {},
+        setHeader() {},
+        statusCode: 200,
+      }
+      const svc = new AiChat(ctx)
+      await svc.chatPost()
+      const parsed = sseData.map(d => {
+        const m = d.match(/^data: (.+)\n\n$/)
+        return m ? JSON.parse(m[1]) : null
+      }).filter(Boolean)
+      assert.ok(parsed.find(e => e.type === 'error'))
+    })
     it('persists user message and assistant reply', async function() {
       const createdMessages = []
       AiChatMessageModel.create = (data) => {
@@ -699,6 +815,7 @@ describe('ai-chat controller (unit)', function() {
         write(data) { sseData.push(data) },
         end() {},
         on() {},
+        removeListener() {},
         setHeader() {},
         statusCode: 200,
       }
@@ -727,6 +844,7 @@ describe('ai-chat controller (unit)', function() {
         write() {},
         end() {},
         on() {},
+        removeListener() {},
         setHeader() {},
         statusCode: 200,
       }
@@ -743,6 +861,7 @@ describe('ai-chat controller (unit)', function() {
         write() {},
         end() {},
         on() {},
+        removeListener() {},
         setHeader() {},
         statusCode: 200,
       }
@@ -763,6 +882,7 @@ describe('ai-chat controller (unit)', function() {
         write() {},
         end() {},
         on() {},
+        removeListener() {},
         setHeader() {},
         statusCode: 200,
       }

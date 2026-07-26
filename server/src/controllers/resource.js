@@ -214,3 +214,4 @@ class Resource extends BasicService {
 }
 
 module.exports = Resource
+module.exports.getPriority = getPriority

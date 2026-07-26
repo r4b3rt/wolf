@@ -1,0 +1,21 @@
+--- luacov configuration for wolf agent unit tests
+--- Patterns are matched with string.find against filenames in stats.
+include = {
+  "lua%/",
+}
+exclude = {
+  "lua%/resty%/",
+  "spec%/",
+  "_main%.lua$",
+  "/usr/",
+  "luarocks",
+  "busted",
+  "luassert",
+  "penlight",
+  "/pl/",
+  "mediator",
+  "say/",
+  "compat53",
+}
+statsfile = "luacov.stats.out"
+reportfile = "luacov.report.out"

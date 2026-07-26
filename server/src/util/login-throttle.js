@@ -77,8 +77,13 @@ async function clearLoginFailure(ip, username) {
   ])
 }
 
+async function flushForTests() {
+  await cache.flushAll()
+}
+
 module.exports = {
   isLoginLocked,
   recordLoginFailure,
   clearLoginFailure,
+  flushForTests,
 }

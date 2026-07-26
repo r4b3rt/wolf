@@ -100,7 +100,7 @@ The Wolf system has the following main features:
 
 ### 8. Other Features
 
-* Extensive test cases with over 90% code coverage
+* Extensive test cases: Server coverage Statements/Lines/Functions ≥95%, Branches ≥90% (currently ~96.9% / 97.1% / 96.0% / 90.2%); Agent (OpenResty Lua) line coverage ~99.8%
 * Resource matching supports different priority rules:
   - Priority of `Match Type` from high to low: Exact Match, Suffix Match, Prefix Match.
   - Action (HTTP method) priority: ALL has lower priority, other methods (like GET, POST, PUT) have equal priority but higher than ALL.

@@ -4,10 +4,35 @@
   "private": true,
   "scripts": {
     "start": "node app.js",
-    "test": "./node_modules/.bin/nyc --reporter=html mocha test/*.test.js --exit --timeout 10000",
-    "test4redis": "MEM_CACHE_BY_REDIS=yes ./node_modules/.bin/nyc --reporter=html mocha test/*.test.js --exit --timeout 10000",
-    "test:ai": "RUN_AI_TESTS=yes ./node_modules/.bin/nyc --reporter=html mocha test/96.ai-chat.test.js --exit --timeout 60000",
-    "test:all": "RUN_AI_TESTS=yes ./node_modules/.bin/nyc --reporter=html mocha test/*.test.js --exit --timeout 60000"
+    "test": "./node_modules/.bin/nyc --reporter=html --reporter=text-summary --reporter=lcov mocha test/*.test.js --exit --timeout 10000",
+    "test4redis": "MEM_CACHE_BY_REDIS=yes ./node_modules/.bin/nyc --reporter=html --reporter=text-summary --reporter=lcov mocha test/*.test.js --exit --timeout 10000",
+    "test:ai": "RUN_AI_TESTS=yes ./node_modules/.bin/nyc --reporter=html --reporter=text-summary --reporter=lcov mocha test/96.ai-chat.test.js --exit --timeout 60000",
+    "test:all": "RUN_AI_TESTS=yes ./node_modules/.bin/nyc --reporter=html --reporter=text-summary --reporter=lcov mocha test/*.test.js --exit --timeout 60000"
+  },
+  "nyc": {
+    "all": true,
+    "include": [
+      "app.js",
+      "src/**/*.js",
+      "conf/config.js"
+    ],
+    "exclude": [
+      "test/**",
+      "coverage/**",
+      "html/**",
+      "tmpl/**",
+      "src/util/radixtree.js"
+    ],
+    "reporter": [
+      "html",
+      "text-summary",
+      "lcov"
+    ],
+    "check-coverage": true,
+    "statements": 95,
+    "branches": 90,
+    "functions": 95,
+    "lines": 95
   },
   "dependencies": {
     "@mariozechner/pi-agent-core": "^0.73.1",

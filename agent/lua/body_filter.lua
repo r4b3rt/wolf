@@ -2,6 +2,8 @@ local config = require("config")
 local util = require("util")
 local agent_pub = require("agent_pub")
 
+local _M = {}
+
 local logout_url = "/wolf/rbac/logout"
 local change_pwd_url = "/wolf/rbac/change_pwd.html"
 
@@ -59,11 +61,11 @@ local topbar_tpl = [[
 </div>
 ]]
 
-local function get_style()
+function _M.get_style()
 	return def_topbar_style
 end
 
-local function get_infobar()
+function _M.get_infobar()
 	local username = "NONE"
 	local nickname = "UNKNOW"
 	local userInfo = ngx.ctx.userInfo
@@ -79,24 +81,28 @@ local function get_infobar()
 		href = string.format([[href="#" onclick="javascript:alert('Password change is not allowed');"]])
 	end
 	ngx.log(ngx.INFO, "user [", username, "](", nickname, ") request...")
-	local replace = get_style() .. string.format(topbar_tpl, config.sysname or 'WOLF-RBAC', username, nickname, href, logout_url)
+	local replace = _M.get_style() .. string.format(topbar_tpl, config.sysname or 'WOLF-RBAC', username, nickname, href, logout_url)
 	return true, replace
 end
 
 
-ngx.log(ngx.DEBUG, "url:", ngx.var.uri)
-if agent_pub.need_replace() then
-	local ok, infobar = get_infobar()
-	if ok then
-		local n = nil
-		if ngx.var.uri == "/" or util.endswith(ngx.var.uri, "/") then 
-			ngx.arg[1], n =  ngx.re.sub(ngx.arg[1], "\\<body[^\\>]*\\>", "$0 " .. infobar , "jom")
-		else
-			ngx.arg[1] =  ngx.re.sub(ngx.arg[1], [[<div id="rbac" style="display:none"></div>]], infobar , "jom")
+function _M.run()
+	ngx.log(ngx.DEBUG, "url:", ngx.var.uri)
+	if agent_pub.need_replace() then
+		local ok, infobar = _M.get_infobar()
+		if ok then
+			local n = nil
+			if ngx.var.uri == "/" or util.endswith(ngx.var.uri, "/") then
+				ngx.arg[1], n =  ngx.re.sub(ngx.arg[1], "\\<body[^\\>]*\\>", "$0 " .. infobar , "jom")
+			else
+				ngx.arg[1] =  ngx.re.sub(ngx.arg[1], [[<div id="rbac" style="display:none"></div>]], infobar , "jom")
+			end
+			ngx.ctx.topbar_added = (n==1)
+			ngx.log(ngx.INFO, "### add infobar. ### n:", tostring(ngx.ctx.topbar_added))
 		end
-		ngx.ctx.topbar_added = (n==1)
-		ngx.log(ngx.INFO, "### add infobar. ### n:", tostring(ngx.ctx.topbar_added))
+	else
+	    ngx.log(ngx.INFO, "---- ignore url: ", ngx.var.uri);
 	end
-else
-    ngx.log(ngx.INFO, "---- ignore url: ", ngx.var.uri);
 end
+
+return _M

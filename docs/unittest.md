@@ -1,60 +1,27 @@
 
 ### Execute unit tests
 
-The unit test is currently only for the server API interface part. Execute the following command to perform the unit test:
+#### Server (Node / Mocha / nyc)
 
-```
+```bash
 cd wolf/server
-pnpm run test
+pnpm run test          # unit/integration tests + coverage gate
+pnpm run test:all      # includes AI integration tests (requires AI API Key; RUN_AI_TESTS=yes)
+pnpm run test4redis    # Redis cache path (MEM_CACHE_BY_REDIS=yes)
 ```
 
-After execution, if all tests are successful, the output will look like this:
+When all tests pass, HTML/lcov reports are written under `server/coverage`. `nyc` enforces coverage thresholds (Statements/Lines/Functions ≥95%, Branches ≥90%); the command exits non-zero if thresholds are not met.
 
-```
-➜  server git:(master) ✗ npm run test
+Current coverage (`pnpm run test:all`, ~1038 passing):
 
-> wolf-server@0.1.0 test
-> ./node_modules/.bin/nyc --reporter=html mocha test/*.test.js --exit --timeout 10000
+| Metric | Coverage |
+|------|--------|
+| Statements | 96.9% |
+| Branches | 90.2% |
+| Functions | 96.01% |
+| Lines | 97.06% |
 
-  framework
-    router
-user [root] is exist!
-      ✔ ping (38ms)
-      ✔ not found 001 (286ms)
-user [admin] is exist!
-      ✔ not found 002 (44ms)
-      ✔ request internal method start with _ (68ms)
-    token check
-      ✔ token missing
-      ✔ token invalid
-      ✔ token ok (51ms)
-
-    ......
-
-      ✔ userInfo success by refreshTokenInfo1.access_token (59ms)
-      ✔ access check success by refreshTokenInfo1.access_token (100ms)
-      ✔ userInfo failed, token expired (2019ms)
-      ✔ token by password success (102ms)
-      ✔ access check failed, token missing
-      ✔ access check success (52ms)
-      ✔ token by password failed, User not found (41ms)
-      ✔ token by password failed, Password is incorrect (179ms)
-      ✔ token by client_credentials success
-      ✔ userInfo success by clientCredentialsTokenInfo.access_token
-    rbac-destroy
-      ✔ application (58ms)
-      ✔ category (54ms)
-      ✔ permission (40ms)
-      ✔ role
-      ✔ user (530ms)
-      ✔ resource
-
-
-  317 passing (36s)
-```
-
-After all the unit tests are executed, a coverage report will be generated in `server/coverage`. The current code statement coverage is around `92%`.
-
+Note: `src/util/radixtree.js` (broken `rou3` dependency; production uses `rax-radix-tree`) is excluded from the coverage gate.
 
 | ![Coverage - Overview](./imgs/screenshot/coverage-overview.png) |
 |:--:|
@@ -65,3 +32,20 @@ After all the unit tests are executed, a coverage report will be generated in `s
 |:--:|
 | *Coverage - Detail* |
 
+#### Agent (OpenResty Lua / busted / luacov)
+
+```bash
+cd wolf/agent
+make test-docker       # recommended: run in openresty alpine (same runtime as production)
+# or locally if luarocks/busted are installed:
+make coverage
+```
+
+Current coverage (`make test-docker`, 58 successes):
+
+| Metric | Coverage |
+|------|--------|
+| Line (agent `lua/`) | 99.78% |
+| Branch case matrix | 32/32 |
+
+Note: vendored `lua/resty/cookie.lua` and thin entry files `*_main.lua` are excluded from the coverage gate.

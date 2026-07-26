@@ -273,3 +273,6 @@ class ArgsHelper {
 }
 
 module.exports = ArgsHelper
+// Exposed for unit-coverage of parse helpers
+module.exports.parseObject = parseObject
+module.exports.parseArray = parseArray

@@ -252,4 +252,4 @@ function buildSystemPrompt(userInfo, locale, memories) {
   return buildSystemPromptEn(userInfo, memories)
 }
 
-module.exports = { buildSystemPrompt, isChineseLocale }
+module.exports = { buildSystemPrompt, isChineseLocale, truncateMemoryItem, buildMemorySection }
